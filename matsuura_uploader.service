@@ -1,0 +1,9 @@
+[Unit]
+ Description = serial sender for the matsuura
+[Service]
+ ExecStart = /usr/bin/python3 /home/pi/matsuura_uploader/app.py
+ Type = simple
+[Install]
+ WantedBy=multi-user.target
+
+

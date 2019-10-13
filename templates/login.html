@@ -1,0 +1,69 @@
+{% extends "bootstrap/base.html" %}
+{# Loads some of the macros included with Flask-Bootstrap. We are using the
+utils module here to automatically render Flask's flashed messages in a
+bootstrap friendly manner #}
+{% import "bootstrap/utils.html" as utils %}
+{% block title %}home{% endblock %}
+{% block styles %}  
+  {{ super() }} 
+  {# Call in our scripts *after* bootstrap calls in jquery #}
+  <link href="{{ url_for('static', filename='utils.css') }}" rel="stylesheet">
+{% endblock %} 
+
+{# 
+Inside the ``content`` is where you should place most of your own stuff.
+This will keep scripts at the page end and a navbar you add on later
+intact. 
+#}
+{% block content %}
+
+
+<div class="container">
+  {% include "navbar.html"  %}
+
+
+  {%- with messages = get_flashed_messages(with_categories=True) %}
+  {%- if messages %}
+  <div class="row">
+    <div class="col-sm-12">
+    {{utils.flashed_messages(messages)}}
+    </div>
+  </div>
+  {%- endif %}
+  {%- endwith %}
+
+  {# 
+  Inside the ``content`` is where you should place most of your own stuff.
+  This will keep scripts at the page end and a navbar you add on later
+  intact. 
+  #}
+<!--
+  <form action="" method="post">
+    <p><input type=text name=username>
+    <p><input type=password name=password>
+    <p><input type=submit value=Login>
+  </form>
+-->
+
+<form action="" class="form-inline" method="post">
+  <div class="form-group col-md-4" >
+    <label for="inputLogin1">Login</label>
+    <input type="text" class="form-control" id="inputLogin1" placeholder="username" name=username >
+  </div>
+  <div class="form-group col-md-4">
+    <label for="inputPassword1">Password</label>
+    <input type=password class="form-control" id="inputPassword1" placeholder="password" name=password>
+  </div>
+  <button type="submit" class="btn btn-primary float-bottom">LOGIN</button>
+</form>
+
+</div>
+{%- endblock %}
+
+{# #}
+{% block scripts %}  
+{{ super() }} 
+{# Call in our scripts *after* bootstrap calls in jquery #}
+<script type="text/javascript" src="{{ url_for('static', filename='utils.js') }}"></script>
+{% endblock %} 
+

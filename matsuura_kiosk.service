@@ -1,0 +1,18 @@
+# https://pimylifeup.com/raspberry-pi-kiosk/
+[Unit]
+Description=Chromium Kiosk
+Wants=graphical.target
+After=graphical.target
+
+[Service]
+Environment=DISPLAY=:0.0
+Environment=XAUTHORITY=/home/pi/.Xauthority
+Type=simple
+ExecStart=/bin/bash /home/pi/matsuura_uploader/matsuura_kiosk.sh
+Restart=on-abort
+User=pi
+Group=pi
+
+[Install]
+WantedBy=graphical.target
+

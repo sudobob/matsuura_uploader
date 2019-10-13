@@ -1,0 +1,59 @@
+{% extends "bootstrap/base.html" %}
+{# Loads some of the macros included with Flask-Bootstrap. We are using the
+utils module here to automatically render Flask's flashed messages in a
+bootstrap friendly manner #}
+{% import "bootstrap/utils.html" as utils %}
+{% block title %}utils{% endblock %}
+
+{% block styles %}  
+  {{ super() }} 
+  {# Call in our scripts *after* bootstrap calls in jquery #}
+  <link href="{{ url_for('static', filename='wautils.css') }}" rel="stylesheet">
+{% endblock %} 
+
+
+{# Inside the ``content`` is where you should place most of your own stuff.
+This will keep scripts at the page end and a navbar you add on later
+intact. #}
+{% block content %}
+<div class="container">
+  {% include "wanavbar.html"  %}
+
+  {%- with messages = get_flashed_messages(with_categories=True) %}
+  {%- if messages %}
+  <div class="row">
+    <div class="col-sm-12">
+      {{utils.flashed_messages(messages)}}
+    </div>
+  </div>
+  {%- endif %}
+  {%- endwith %}
+
+
+  {% if g.wa_accounts_contact_me.IsAccountAdministrator %}
+  <div class='col-sm-2 pt-1'>
+  <a href="/signoffs" class='btn btn-primary' style="display:block;" >SIGNOFFS</a>
+  </div>
+  <div class='col-sm-2 pt-1'>
+  </div>
+  {% else %}
+  <h2>Sorry, You are not a Wild Apricot Account Admin</h2>
+  {% endif %}
+
+  <div class='col-sm-2 pt-1'>
+  <a href="/logout" class='btn btn-primary' style="display:block;">LOGOUT</a>
+  <div>
+  <div class='col-sm-2 pt-1'>
+  </div>
+
+
+
+</div>
+{%- endblock %}
+
+{% block scripts %}  
+  {{ super() }} 
+  {# Call in our scripts *after* bootstrap calls in jquery #}
+  <script type="text/javascript" src="{{ url_for('static', filename='wautils.js') }}"></script>
+{% endblock %} 
+{# #}

@@ -1,0 +1,81 @@
+
+{% extends "bootstrap/base.html" %}
+{# Loads some of the macros included with Flask-Bootstrap. We are using the
+utils module here to automatically render Flask's flashed messages in a
+bootstrap friendly manner #}
+{% import "bootstrap/utils.html" as utils %}
+{% block title %}home{% endblock %}
+{% block styles %}  
+{{ super() }} 
+{# Call in our scripts *after* bootstrap calls in jquery 
+#}
+<link href="{{ url_for('static', filename='utils.css') }}" rel="stylesheet">
+{% endblock %} 
+
+{# 
+Inside the ``content`` is where you should place most of your own stuff.
+This will keep scripts at the page end and a navbar you add on later
+intact. 
+#}
+{% block content %}
+
+
+<div class="container">
+	{% include "navbar.html"  %}
+
+
+	{%- with messages = get_flashed_messages(with_categories=True) %}
+	{%- if messages %}
+	<div class="row">
+		<div class="col-sm-12">
+			{{utils.flashed_messages(messages)}}
+		</div>
+	</div>
+	{%- endif %}
+	{%- endwith %}
+
+	<div class="border-top">
+
+		{% if g.files_uploaded %}
+
+		<H4>SEND FILE</H4>
+		{% for f in g.files_uploaded%}
+		<div class="row m-2 div-custom-bordered" style="margin-left:1%;">
+			<div class="col-md-8 m-1"><span style="font-size:+1.5em;font-weight:bolder;"> {{f.file_name}} </span> 
+				<span style="font-family: Courier;padding-left:5em;"> 
+					{{f.first_line}} 
+				</span>
+			</div>
+
+
+			<div class="float-right">
+				<button class='btn btn-success' id="send_start_btn" type="text" value="{{f.file_name}}" >START</button>
+				<button class='btn btn-danger ' id="send_stop_btn" type="text" value="{{f.file_name}}" >STOP</button>
+				<button class='btn btn-warning' id="send_status_btn" type="text"  >STATUS</button>
+			</div>
+		</div>
+		{% endfor %}
+		{% endif %}
+
+
+
+	</div>
+	<div id="message_div" class="container"> </div>
+	<div id="loader_div" class="loader" style="display:none"></div>
+
+</div>
+
+
+
+
+
+</div>
+{%- endblock %}
+
+{# #}
+{% block scripts %}  
+{{ super() }} 
+{# Call in our scripts *after* bootstrap calls in jquery #}
+<script type="text/javascript" src="{{ url_for('static', filename='utils.js') }}"></script>
+{% endblock %} 
+

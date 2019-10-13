@@ -1,0 +1,98 @@
+{% extends "bootstrap/base.html" %}
+{# Loads some of the macros included with Flask-Bootstrap. We are using the
+utils module here to automatically render Flask's flashed messages in a
+bootstrap friendly manner #}
+{% import "bootstrap/utils.html" as utils %}
+{% block title %}home{% endblock %}
+{% block styles %}  
+  {{ super() }} 
+  {# Call in our scripts *after* bootstrap calls in jquery 
+  #}
+  <link href="{{ url_for('static', filename='utils.css') }}" rel="stylesheet">
+{% endblock %} 
+
+{# 
+Inside the ``content`` is where you should place most of your own stuff.
+This will keep scripts at the page end and a navbar you add on later
+intact. 
+#}
+{% block content %}
+
+
+<div class="container">
+  {% include "navbar.html"  %}
+
+
+  {%- with messages = get_flashed_messages(with_categories=True) %}
+  {%- if messages %}
+  <div class="row">
+    <div class="col-sm-12">
+    {{utils.flashed_messages(messages)}}
+    </div>
+  </div>
+  {%- endif %}
+  {%- endwith %}
+
+  <div class="border-top">
+
+		{% if g.files_uploaded %}
+
+		<H4>FILES UPLOADED</H4>
+		<form action="/file_action" method="POST">
+			{% for f in g.files_uploaded%}
+			<div class="row m-2 div-custom-bordered" style="margin-left:1%;">
+				<div class="col-md-9 m-1"><span style="font-size:+1.5em;font-weight:bolder;"> {{f.file_name}} </span> 
+					<span style="font-family: Courier;padding-left:5em;"> 
+						{{f.first_line}} 
+					</span>
+				</div>
+
+
+				<div class="float-right">
+					<button type="submit" class='btn btn-primary  m-1' name="file_to_send" type="text" value="{{f.file_name}}" > SEND</button>
+					<button type="submit" class='btn btn-danger  m-1' name="file_to_delete" type="text" value="{{f.file_name}}" > DELETE</button>
+				</div>
+			</div>
+			{% endfor %}
+		</form>
+
+		{% endif %}
+
+	</div>
+
+
+
+	{# 
+	Inside the ``content`` is where you should place most of your own stuff.
+	This will keep scripts at the page end and a navbar you add on later
+	intact. 
+	#}
+
+	<div class="border-top">
+		<H4>UPLOAD NEW FILE</H4>
+		<div style="margin-left:1%;">
+			<form action="/upload" method="POST" enctype="multipart/form-data">
+				<div class="form-group">
+					<input type="file" class="form-control-file border" name="file">
+				</div>
+				<div class='col-md-2 p-1'>
+					<button type="submit" class="btn btn-primary">UPLOAD</button>
+				</div>
+			</form>
+		</div>
+	</div>
+
+
+
+
+</div>
+{%- endblock %}
+
+{# #}
+{% block scripts %}  
+{{ super() }} 
+{# Call in our scripts *after* bootstrap calls in jquery 
+<script type="text/javascript" src="{{ url_for('static', filename='utils.js') }}"></script>
+#}
+{% endblock %} 
+
