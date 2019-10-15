@@ -38,7 +38,7 @@ This application runs on a dedicated raspberry pi.
 
 
 # Development Info
-This app is written using the **python flask** framework for web applications. Main code is in the file `app.py` It relies on a separate process `serial_sender.py` to send the data to the 
+This app is written using the **python flask** framework for web applications. Main code is in the file `app.py` It relies on a separate process `serial_sender.py` to send the data to the serial ports. The Flask web app services html, css, and js to render the page. When the user commands an action to send a file or get status, their flask web server instance makes a tcp socket connection to the serial sender on port 1111 and issues a one line command. The seial sender returns a 1 line json-encoded response which is sent directly back to the client's web browser
 
 ## Handy development debugging commands
 You will need to source the local environment variables from `.env`  with `source .env`
