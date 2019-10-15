@@ -26,12 +26,15 @@ This application runs on a dedicated raspberry pi.
         `  sudo ln -s /home/pi/matsuura_uploader/serial_sender.service /etc/systemd/system/`
      `sudo systemctl enable matsuura_uploader`
      `sudo systemctl enable serial_sender`
+     
+- configure the a browser instance to come up on the local touch screen in kiosk mode at boot time
+`sudo ln -s /home/pi/matsuura_uploader/autostart /home/pi/.config/lxsession/LXDE-pi/`
 - do a `mv .env-example .env` Edit .env and set the USERNAME and PASSWORD values
 - do a `source .env` to pick up the handy development aliases
 - You should start the flask application in the foreground initially to see if it is starting up ok with `dbg_start_web_app`
 - Same for the serial sender with `dbg_start_sender`
 - At this point you should be able to browse to http://YourRaspisIPaddr/ and upload and send files
-- If all is well then reboot your pi and the processes should start at boot time via systemd
+- If all is well then reboot your pi and the processes should start at boot time via systemd, the browser should come up on the local touch screen
 
 
 
