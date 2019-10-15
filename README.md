@@ -40,7 +40,7 @@ This application runs on a dedicated raspberry pi.
 # Development Info
 This app is written using the **python flask** framework for web applications. Main code is in the file `app.py` It relies on a separate process `serial_sender.py` to send the data to the 
 
-## Handy commands during 
+## Handy development debugging commands
 You will need to source the local environment variables from `.env`  with `source .env`
 
 connect directly to serial usb dongle  0  `t0`
