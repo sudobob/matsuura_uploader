@@ -1,4 +1,5 @@
-# Matsuura Uploader
+# Matsuura Yasnac Uploader
+![enter image description here](https://raw.githubusercontent.com/sudobob/matsuura_uploader/master/static/matsuura_clipped_128w.png)
 
 The matsuura uploader provides a web-based file upload interface to send jobs to the Matsuura-Yasnac CNC mill
 
