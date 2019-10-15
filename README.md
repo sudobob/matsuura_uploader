@@ -16,11 +16,12 @@ This application runs on a dedicated raspberry pi with a touch screen.
  
  # Installation
  
--  `sudo raspi-config` to set things like wifi network name and password. I typically enable ssh access and complete all setup via ssh
+-  `sudo raspi-config` to set things like wifi network name and password. I typically enable ssh access and complete all setup via ssh. You'll also want to set Boot Options -> Auto Login Desktop
 - if this is a new pi do a `sudo apt-get upgrade`  and if this is not a brand new distro then  a `sudo apt-get dist-upgrade`
 -  install this repo into `/home/pi/matsuura_uploader` and `cd matsuura_uploader`
- - install python package installer pip3 `sudo apt-get install python3-pip`
--  install python packages with `sudo -H pip3 -r requirements.txt` *Note since this is a dedicated raspi I don't see the need to use virtualenv*
+- If this was a -lite distro like raspbian buster light you'll need to do a `sudo apt-get install lightdm xserver-xorg lxde chromium-browser`
+- install python package installer pip3 `sudo apt-get install python3-pip`
+- install python packages with `sudo -H pip3 -r requirements.txt` *Note since this is a dedicated raspi I don't see the need to use virtualenv*
 - install boot-time invocations of web server and serial uploader daemons 
      `sudo ln -s /home/pi/matsuura_uploader/matsuura_uploader.service /etc/systemd/system/`
         `  sudo ln -s /home/pi/matsuura_uploader/serial_sender.service /etc/systemd/system/`
