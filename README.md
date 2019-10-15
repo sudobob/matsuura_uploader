@@ -5,7 +5,7 @@ The matsuura uploader provides a web-based file upload interface to send jobs to
 
 The Matsuura mill is controlled by a Yasnac controller. The Yasnac is equipped with an RS232 interface that accepts G-code files for upload
 
-This application runs on a dedicated raspberry pi. 
+This application runs on a dedicated raspberry pi with a touch screen.
 # Basic Use
 
  - On your PC, Navigate to [`https://matsuura.local`](http://matsuura.local/)
