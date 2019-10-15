@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-matsuura file uploader
+
+matsuura file uploader web app
 
 
 Handy links
@@ -71,7 +72,9 @@ def login():
         rp.add_argument('password',type=str)
         args = rp.parse_args()
 
-    if (args['username'] == single_user_name and args['password'] == single_user_password):        
+    if ((args['username'] == single_user_name or
+        args['username'] == os.environ['KIOSK_USER_NAME']) and  # login as kiosk modifies UI a bit
+        args['password'] == single_user_password):        
         id = args['username']
         user = User(id)
         login_user(user)
@@ -116,6 +119,7 @@ def upload_file():
 
     global g
     g.files_uploaded = get_files_uploaded()
+    g.kiosk_user_name = os.environ['KIOSK_USER_NAME']
     return render_template("index.html")
 
 def get_first_line(fn):
@@ -182,6 +186,7 @@ def send_file():
     g.files_uploaded = [] 
     fns = request.args.get('file_to_send')
     g.files_uploaded.append( {'file_name':fns,'first_line':get_first_line(fns)} )
+    g.kiosk_user_name = os.environ['KIOSK_USER_NAME']
     return render_template('send.html')
 
 
@@ -195,6 +200,7 @@ def file_action():
       flash(request.form['file_to_delete']  + '  ' + 'deleted')  
       global g
       g.files_uploaded = get_files_uploaded()
+      g.kiosk_user_name = os.environ['KIOSK_USER_NAME']
       return render_template("index.html")
 
     if 'file_to_send' in request.form:
@@ -206,8 +212,7 @@ def index():
   flash('You are logged in','success')
   global g
   g.files_uploaded = get_files_uploaded()
-
-  #pdb.set_trace()
+  g.kiosk_user_name = os.environ['KIOSK_USER_NAME']
   return render_template('index.html')
 
 ################################################################################

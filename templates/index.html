@@ -49,8 +49,8 @@ intact.
 
 
 				<div class="float-right">
-					<button type="submit" class='btn btn-primary  m-1' name="file_to_send" type="text" value="{{f.file_name}}" > SEND</button>
-					<button type="submit" class='btn btn-danger  m-1' name="file_to_delete" type="text" value="{{f.file_name}}" > DELETE</button>
+					<button type="submit" class='btn btn-lg btn-primary  m-1' name="file_to_send" type="text" value="{{f.file_name}}" > SEND</button>
+					<button type="submit" class='btn btn-lg btn-danger  m-1' name="file_to_delete" type="text" value="{{f.file_name}}" > DELETE</button>
 				</div>
 			</div>
 			{% endfor %}
@@ -68,6 +68,8 @@ intact.
 	intact. 
 	#}
 
+{% if current_user.id != "kiosk" %}
+  
 	<div class="border-top">
 		<H4>UPLOAD NEW FILE</H4>
 		<div style="margin-left:1%;">
@@ -82,6 +84,7 @@ intact.
 		</div>
 	</div>
 
+{% endif %}
 
 
 

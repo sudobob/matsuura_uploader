@@ -14,5 +14,5 @@ sed -i 's/"exit_type":"Crashed"/"exit_type":"Normal"/' /home/pi/.config/chromium
 
 DISPLAY=:0.0
 
-/usr/bin/chromium-browser --noerrdialogs --disable-infobars --kiosk http://localhost/login\?username=$USER_NAME\&password=$PASSWORD 
+/usr/bin/chromium-browser --noerrdialogs --disable-infobars --kiosk http://localhost/login\?username=$KIOSK_USER_NAME\&password=$PASSWORD 
 
