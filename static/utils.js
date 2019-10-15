@@ -70,7 +70,7 @@ $(document).ready(() => {
 
 	$(document).on('click','#send_status_btn', () => {
 			//$('#message_div').html(mesg('binoculars','status','warning'));
-			$('#message_div').html(mesg('fa-binoculars ','','warning'));
+			$('#message_div').html(mesg('fa-binoculars ','under construction','warning'));
 	});
 
 	function get_status() {

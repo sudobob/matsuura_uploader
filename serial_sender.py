@@ -81,8 +81,8 @@ def serial_check_and_open():
                     9600,
                     parity        = serial.PARITY_NONE,
                     write_timeout = None,
-                    xonxoff       = True,
-                    rtscts        = False)
+                    xonxoff       = False,
+                    rtscts        = True)
 
     except serial.SerialException as er:
       e('could not open port [%s]:%s\n' %( serial_port_name, er))
@@ -158,8 +158,8 @@ def serial_chores():
   if  serial_connection != None and  file_to_send != None:
   
 
-    if serial_connection.out_waiting == 0:
-      line_from_file = file_to_send.readline()   
+    if serial_connection.out_waiting == 0 and serial_connection.cts == 1:
+      line_from_file = file_to_send.readline().upper()
       if line_from_file == '':
         e('eof on file\n')
         file_to_send = None
@@ -186,12 +186,12 @@ if __name__ == '__main__':
   while True:
     if file_to_send == None:
       time.sleep(.8)
-      e('sersender loop #%i\r' % (main_loop_iterations))
+      #e('sersender loop #%i\r' % (main_loop_iterations))
 
     time.sleep(.01)
     main_loop_iterations = main_loop_iterations + 1
-    if not( main_loop_iterations%100):	
-      e('sersender loop #%i\r' % (main_loop_iterations))
+    #if not( main_loop_iterations%100):	
+      #e('sersender loop #%i\r' % (main_loop_iterations))
 
     serial_chores()
     serial_check_and_open()
