@@ -43,6 +43,7 @@ serial_connection = None
 file_to_send = None
 file_size = None
 bytes_sent = None
+sent_percent = 0
 
 main_loop_iterations  = 0
 
@@ -154,6 +155,7 @@ def serial_chores():
   global file_to_send
   global main_loop_iterations
   global bytes_sent
+  global sent_percent
 
   if  serial_connection != None and  file_to_send != None:
   
@@ -169,11 +171,14 @@ def serial_chores():
       wret = serial_connection.write(line_from_file_as_bytes)
       bytes_sent = bytes_sent + len(line_from_file_as_bytes)
 
+
+      sent_percent = int((bytes_sent/file_size)*100.0)
+
       e('cts[%d] bs[%d] fs[%d] pct[%d] [%s]\n' % \
                     (serial_connection.cts, \
                     bytes_sent, \
                     file_size, \
-                    int((bytes_sent/file_size)*100.0), \
+                    sent_percent, \
                     line_from_file.rstrip())) 
 
 
@@ -210,13 +215,28 @@ if __name__ == '__main__':
         ssret_as_json_str = json.dumps(sssret).encode('utf-8')
         sock.send(ssret_as_json_str)
 
-      if (mesg['cmd'] == 'stop'): 
+      elif (mesg['cmd'] == 'stop'): 
         e('i\'ve been asked to stop sending\n')
         if not file_to_send == None:
           e('closing file\n')
           file_to_send.close()
           file_to_send = None
           sock.send(json.dumps({'error':0,'message':'Stopped Sending'}).encode('utf-8'))
+        else:
+          sock.send(json.dumps({'error':1,'message':'Already Stopped'}).encode('utf-8'))
 
-        sock.send(json.dumps({'error':1,'message':'Already Stopped'}).encode('utf-8'))
+      elif (mesg['cmd'] == 'status'): 
+        m = ''
+        if file_to_send == None:
+          m += 'Idle ' 
+        else:
+          m += 'Sent %d%% ' % (sent_percent)
+
+        if serial_connection.cts == 1:
+          m += 'Flow Controlled'
+
+        sock.send(json.dumps({'error':0,'message':m }).encode('utf-8'))
+
+      else:
+          sock.send(json.dumps({'error':1,'message':'Unknown command'}).encode('utf-8'))
 

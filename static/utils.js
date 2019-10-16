@@ -1,92 +1,147 @@
 $(document).ready(() => {
 
-	var idle_counter = 0;
-	var idle_secs = 10;
+  var idle_counter = 0;
+  var last_status_message = ''
+  var idle_intrvl_sending_secs = 3;
+  var idle_intrvl_idle_secs = 10;
+  var idle_intrvl_secs = idle_intrvl_idle_secs;
 
-	function show_loader() {
-			$('#message_div').html(mesg('fa-cog fa-spin','','warning'));
-	}
+  function show_loader() {
+    $('#message_div').html(mesg('fa-cog fa-spin','','warning'));
+  }
 
-	function mesg(i,m,c) {
-		// primary, secondary, success, danger, warning, info, light, dark
-		o  = '';
-		o += '<div class="row">';
-		o += '<div class="col-md-12">';
-		o += '  <div class="alert alert-' + c + '" role="alert">';
-		ic = i;
-		o += '<i class="fas ' + ic + ' fa-2x">';
-		o += '</i>';
-		o += '<span style="vertical-align:middle">';
-		o += '&nbsp;&nbsp';
-		o += m;
-		o += '</span>';
-		o += '  </div>';
-		o += '  </div>';
-		o += '</div>';
-		return o;
-	}
+  function mesg(i,m,c) {
+    // primary, secondary, success, danger, warning, info, light, dark
+    o  = '';
+    o += '<div class="row">';
+    o += '<div class="col-md-12">';
+    o += '  <div class="alert alert-' + c + '" role="alert">';
+    ic = i;
+    o += '<span style="vertical-align:top;font-size:1.5em">';
+    o += '<i class="fas ' + ic + ' fa-2x">';
+    o += '</i>';
+    o += '<span style="vertical-align:top">';
+    o += '&nbsp;&nbsp';
+    o += m;
+    o += '</span>';
+    o += '</span>';
+    o += '  </div>';
+    o += '  </div>';
+    o += '</div>';
+    return o;
+  }
 
-	$(document).on('click','#send_start_btn', () => {
-		$.ajax( {
-			type: 'PUT',
-			url: '/api',
-			data: 'cmd=start&file=' + $('#send_start_btn').val(),
-			beforeSend: () => { 
-				show_loader();
+  $(document).on('click','#send_start_btn', () => {
+    $.ajax( {
+      type: 'PUT',
+      url: '/api',
+      data: 'cmd=start&file=' + $('#send_start_btn').val(),
+      beforeSend: () => { 
+        show_loader();
 
-				idle_counter = idle_secs;
-			},
-			success: (r) => { 
-				if (r['error'] == 1) {
-					$('#message_div').html(mesg('fa-bomb',r['message'],'danger'));
-				} else {
-					$('#message_div').html(mesg('fa-rocket',r['message'],'success'));
-				}
+        idle_counter = idle_intrvl_secs;
+      },
+      success: (r) => { 
+        if (r['error'] == 1) {
+          $('#message_div').html(mesg('fa-bomb',r['message'],'danger'));
+        } else {
+          $('#message_div').html(mesg('fa-rocket',r['message'],'success'));
+          idle_counter = idle_intrvl_secs = idle_intrvl_sending_secs;
+        }
 
-			}
-		});
-	});
+      }
+    });
+  });
 
-	$(document).on('click','#send_stop_btn', () => {
-		$.ajax( {
-			type: 'PUT',
-			url: '/api',
-			data: 'cmd=stop',
-			beforeSend: () => { 
-				show_loader();
-				idle_counter = idle_secs;
-},
-			success: (r) => { 
-				if (r['error'] == 1) {
-					$('#message_div').html(mesg('fa-bomb',r['message'],'danger'));
-				} else {
-					$('#message_div').html(mesg('fa-rocket',r['message'],'success'));
-				}
+  $(document).on('click','#send_stop_btn', () => {
+    $.ajax( {
+      type: 'PUT',
+      url: '/api',
+      data: 'cmd=stop',
+      beforeSend: () => { 
+        show_loader();
+        idle_counter = idle_intrvl_secs;
+      },
+      success: (r) => { 
+        if (r['error'] == 1) {
+          $('#message_div').html(mesg('fa-bomb',r['message'],'danger'));
+        } else {
+          $('#message_div').html(mesg('fa-rocket',r['message'],'success'));
+        }
+      }
+    });
+  });
 
-			}
-		});
-	});
+
+  function get_status() {
+
+    //$('#message_div').html(mesg('fa-binoculars ','under construction','warning'));
+    $.ajax( {
+      type: 'PUT',
+      url: '/api',
+      data: 'cmd=status',
+      beforeSend: () => { 
+        show_loader();
+        idle_counter = idle_intrvl_secs;
+      },
+      success: (r) => { 
+        if (r['error'] == 1) {
+          $('#message_div').html(mesg('fa-bomb',r['message'],'danger'));
+        } else {
+          $('#message_div').html(mesg('fa-binoculars',r['message'],'success'));
+        }
+        last_status_message = r['message']
+      }
+    });
 
 
-	$(document).on('click','#send_status_btn', () => {
-			//$('#message_div').html(mesg('binoculars','status','warning'));
-			$('#message_div').html(mesg('fa-binoculars ','under construction','warning'));
-	});
+  }
 
-	function get_status() {
+  $(document).on('click','#send_status_btn', () => {
+    get_status();
+  });
 
-	}
+  function get_status() {
+    //$('#message_div').html(mesg('fa-binoculars ','under construction','warning'));
+    $.ajax( {
+      type: 'PUT',
+      url: '/api',
+      data: 'cmd=status',
+      beforeSend: () => { 
+        show_loader();
+        idle_counter = idle_intrvl_secs;
+      },
+      success: (r) => { 
+        if (r['error'] == 1) {
+          $('#message_div').html(mesg('fa-bomb',r['message'],'danger'));
+        } else {
+          $('#message_div').html(mesg('fa-binoculars',r['message'],'success'));
+        }
+        last_status_message = r['message']
+      }
+    });
 
-	function periodic_chores() {
-		// tend to periodic housekeeping chores
-		if (idle_counter) 
-			idle_counter--;
-		if (idle_counter == 0) {
-			idle_counter = idle_secs; 
-		}
-		console.log('periodic_chores() idle_counter:' + idle_counter);
-	}
+  }
 
-	setInterval(periodic_chores,  1000);
+  function periodic_chores() {
+    // tend to periodic housekeeping chores
+    if (idle_counter) 
+      idle_counter--;
+    if (idle_counter == 0) {
+      idle_counter = idle_intrvl_secs; 
+      get_status();
+    }
+    console.log('periodic_chores() idle_counter:' + idle_counter + ' last_status_message:' + last_status_message);
+
+    if (last_status_message.match(/Sent/i))
+      idle_intrvl_secs = idle_intrvl_sending_secs;
+    else
+      idle_intrvl_secs = idle_intrvl_idle_secs;
+    
+  }
+
+  setInterval(periodic_chores,  1000);
+
+  get_status();
 
 });
