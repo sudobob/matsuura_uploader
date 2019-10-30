@@ -1,8 +1,8 @@
-Flask_RESTful==0.3.7
-Flask_Bootstrap4==4.0.2
-Flask_Login==0.4.1
 Flask==0.12.1
+Flask_RESTful==0.3.7
+Flask_Login==0.4.1
 requests==2.21.0
+Flask_Bootstrap4==4.0.2
 python-dotenv==0.10.3
 flask_bootstrap==3.3.7.1
 pyserial==3.4
