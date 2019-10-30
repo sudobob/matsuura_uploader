@@ -222,7 +222,6 @@ def index():
 # Execution starts here
 if __name__ == '__main__':
     # start up flask web server
-    requests.post(slack_webhook_url, json= {'text': "Matsuura was switched *ON*"})
     flask_app.run(host='0.0.0.0', port=80, debug=True)
 
 
