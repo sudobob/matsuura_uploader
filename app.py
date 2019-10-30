@@ -28,6 +28,8 @@ import pprint
 import json
 import socket # to talk to serial port sender
 
+import requests # for slack
+
 flask_app = Flask(__name__)
 Bootstrap(flask_app) # bootstrap-a-ma-tize flask
 flask_rest_api = FlaskRestAPI(flask_app) # rest-a-ma-tize flask
@@ -38,7 +40,8 @@ flask_app.secret_key = os.environ['KEY']
 single_user_name     = os.environ['USER_NAME']
 single_user_password = os.environ['PASSWORD']
 upload_path          = os.environ['UPLOAD_PATH']
-serial_tcp_port = int(os.environ['SERIAL_TCP_PORT'])
+serial_tcp_port      = int(os.environ['SERIAL_TCP_PORT'])
+slack_webhook_url    = os.environ['SLACK_WEBHOOK_URL']
 
 login_manager            = LoginManager(flask_app) # login manager setup
 login_manager.login_view = 'login'
@@ -219,6 +222,7 @@ def index():
 # Execution starts here
 if __name__ == '__main__':
     # start up flask web server
+    requests.post(slack_webhook_url, json= {'text': "Matsuura was switched *ON*"})
     flask_app.run(host='0.0.0.0', port=80, debug=True)
 
 
