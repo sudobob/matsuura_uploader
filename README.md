@@ -16,20 +16,34 @@ This application runs on a dedicated raspberry pi with a touch screen.
  
  # Installation
  
--  `sudo raspi-config` to set things like wifi network name and password. I typically enable ssh access and complete all setup via ssh. You'll also want to set Boot Options -> Auto Login Desktop
+- We are using the __raspbian buster desktop__ distro
+- `sudo raspi-config` to set things like wifi network name and password. I typically enable ssh access and complete all setup via ssh. You'll also want to set Boot Options -> Auto Login Desktop
 - if this is a new pi do a `sudo apt-get upgrade`  and if this is not a brand new distro then  a `sudo apt-get dist-upgrade`
 -  install this repo into `/home/pi/matsuura_uploader` and `cd matsuura_uploader`
-- If this was a -lite distro like raspbian buster light you'll need to do a `sudo apt-get install lightdm xserver-xorg lxde chromium-browser`
-- install python package installer pip3 `sudo apt-get install python3-pip`
-- install python packages with `sudo -H pip3 -r requirements.txt` *Note since this is a dedicated raspi I don't see the need to use virtualenv*
+- If this was a -lite distro like raspbian buster lite  you'll need to do a 
+`sudo apt-get install lightdm xserver-xorg lxde chromium-browser`
+You should use doa a `sudo raspi-config` and select __Boot Options -> Desktop/CLI -> Desktop Autologin__ Then reboot
+- install python package installer pip3
+ `sudo apt-get install python3-pip`
+- install python packages with 
+`sudo -H pip3 -r requirements.txt`
+ *Note since this is a dedicated raspi I don't see the need to use virtualenv*
 - install boot-time invocations of web server and serial uploader daemons 
-     `sudo ln -s /home/pi/matsuura_uploader/matsuura_uploader.service /etc/systemd/system/`
-        `  sudo ln -s /home/pi/matsuura_uploader/serial_sender.service /etc/systemd/system/`
-     `sudo systemctl enable matsuura_uploader`
-     `sudo systemctl enable serial_sender`
+
+
+```
+sudo ln -s /home/pi/matsuura_uploader/matsuura_uploader.service /etc/systemd/system/
+sudo ln -s /home/pi/matsuura_uploader/serial_sender.service /etc/systemd/system/
+sudo systemctl enable matsuura_uploader
+sudo systemctl enable serial_sender
+```
      
-- configure the a browser instance to come up on the local touch screen in kiosk mode at boot time
-`sudo ln -s /home/pi/matsuura_uploader/autostart /home/pi/.config/lxsession/LXDE-pi/`
+- configure the a browser instance to come up on the local touch screen in kiosk mode at boot time. if `
+```
+mv /home/pi/.config/lxsession/LXDE/autostart /home/pi/.config/lxsession/LXDE/autostart-
+
+ln -s /home/pi/matsuura_uploader/autostart /home/pi/.config/lxsession/LXDE/
+```
 - do a `mv .env-example .env` Edit .env and set the USERNAME and PASSWORD values
 - do a `source .env` to pick up the handy development aliases
 - You should start the flask application in the foreground initially to see if it is starting up ok with `dbg_start_web_app`
