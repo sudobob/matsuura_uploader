@@ -199,8 +199,13 @@ def file_action():
   if (request and request.form ):
 
     if 'file_to_delete' in request.form:
-      os.unlink(os.path.join(upload_path,request.form['file_to_delete']))
-      flash(request.form['file_to_delete']  + '  ' + 'deleted')  
+      try:
+          os.unlink(os.path.join(upload_path,request.form['file_to_delete']))
+      except:
+          flash(request.form['file_to_delete']  + '  ' + 'probably already deleted')  
+      else:
+          flash(request.form['file_to_delete']  + '  ' + 'deleted')  
+
       global g
       g.files_uploaded = get_files_uploaded()
       g.kiosk_user_name = os.environ['KIOSK_USER_NAME']
