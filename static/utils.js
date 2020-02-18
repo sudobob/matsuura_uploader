@@ -131,7 +131,7 @@ $(document).ready(() => {
       idle_counter = idle_intrvl_secs; 
       get_status();
     }
-    console.log('periodic_chores() idle_counter:' + idle_counter + ' last_status_message:' + last_status_message);
+    //console.log('periodic_chores() idle_counter:' + idle_counter + ' last_status_message:' + last_status_message);
 
     if (last_status_message.match(/Sent/i))
       idle_intrvl_secs = idle_intrvl_sending_secs;
@@ -143,5 +143,32 @@ $(document).ready(() => {
   setInterval(periodic_chores,  1000);
 
   get_status();
+
+var socket = $.simpleWebSocket(
+    {
+        url: 'ws://10.0.0.75:8765/',
+        //protocols: 'your_protocol', // optional
+        timeout: 20000, // optional, default timeout between connection attempts
+        attempts: 60, // optional, default attempts until closing connection
+        dataType: 'json' // optional (xml, json, text), default json
+    }
+);
+
+socket.connect();
+
+socket.isConnected(); // or: socket.isConnected(function(connected) {});
+
+socket.send({'foo': 'bar'});
+
+socket.listen(function(data) {});
+
+socket.remove(listenerCallback);
+
+socket.removeAll();
+
+socket.close();
+
+
+
 
 });

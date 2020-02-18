@@ -127,7 +127,11 @@ def upload_file():
 
 def get_first_line(fn):
   f = open(os.path.join(upload_path,fn),'r')
-  return f.readline().rstrip()
+  try:
+      first_line = f.readline().rstrip()
+  except:
+      first_line = '<?>'
+  return first_line
 
 def get_files_uploaded():
     file_names = os.listdir(upload_path)
