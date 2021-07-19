@@ -41,7 +41,7 @@ single_user_name     = os.environ['USER_NAME']
 single_user_password = os.environ['PASSWORD']
 upload_path          = os.environ['UPLOAD_PATH']
 serial_tcp_port      = int(os.environ['SERIAL_TCP_PORT'])
-slack_webhook_url    = os.environ['SLACK_WEBHOOK_URL']
+#slack_webhook_url    = os.environ['SLACK_WEBHOOK_URL']
 
 login_manager            = LoginManager(flask_app) # login manager setup
 login_manager.login_view = 'login'
@@ -144,7 +144,7 @@ class rest_cmd(FlaskRestResource):
     def put(self):
         # curl localhost/api -X PUT -d 'cmd=start' -d 'go
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        e('connecting to serial sender...')
+        e('connecting to serial sender...\n')
         try:
             sock.connect(('localhost',serial_tcp_port))
         except:
@@ -199,8 +199,13 @@ def file_action():
   if (request and request.form ):
 
     if 'file_to_delete' in request.form:
-      os.unlink(os.path.join(upload_path,request.form['file_to_delete']))
-      flash(request.form['file_to_delete']  + '  ' + 'deleted')  
+      try:
+          os.unlink(os.path.join(upload_path,request.form['file_to_delete']))
+      except:
+          flash(request.form['file_to_delete']  + '  ' + 'probably already deleted')  
+      else:
+          flash(request.form['file_to_delete']  + '  ' + 'deleted')  
+
       global g
       g.files_uploaded = get_files_uploaded()
       g.kiosk_user_name = os.environ['KIOSK_USER_NAME']

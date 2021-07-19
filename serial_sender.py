@@ -90,7 +90,7 @@ def serial_check_and_open():
       serial_connection = None
 
     if (serial_connection != None):
-      e('Serial Port open success\n')
+      e('Serial Port open [%s] success\n' % ( serial_port_name ))
 
 
 def process_inbound_socket_connections():
@@ -159,11 +159,20 @@ def serial_chores():
 
   if  serial_connection != None and  file_to_send != None:
   
+    """ 
+    e('cts[%d] bs[%d] fs[%d] pct[%d] \n' % \
+                (serial_connection.cts, \
+                bytes_sent, \
+                file_size, \
+                sent_percent  \
+                ) )
+    """
 
-    if serial_connection.out_waiting == 0 and serial_connection.cts == 1:
+    if (True):  # doesn't seem necessary: serial_connection.out_waiting == 0 and serial_connection.cts == 1:
       line_from_file = file_to_send.readline().upper()
+      #e('sending file... line_from_file[%s]\n' % (line_from_file))
       if line_from_file == '':
-        e('eof on file\n')
+        #e('eof on file\n')
         file_to_send = None
         return
 
@@ -174,12 +183,14 @@ def serial_chores():
 
       sent_percent = int((bytes_sent/file_size)*100.0)
 
+      """
       e('cts[%d] bs[%d] fs[%d] pct[%d] [%s]\n' % \
                     (serial_connection.cts, \
                     bytes_sent, \
                     file_size, \
                     sent_percent, \
                     line_from_file.rstrip())) 
+      """
 
 
 if __name__ == '__main__':
@@ -235,6 +246,7 @@ if __name__ == '__main__':
         if serial_connection.cts == 1:
           m += 'Flow Controlled'
 
+        e(m + '\n')
         sock.send(json.dumps({'error':0,'message':m }).encode('utf-8'))
 
       else:

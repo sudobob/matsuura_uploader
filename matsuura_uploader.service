@@ -1,9 +1,9 @@
 [Unit]
- Description = serial sender for the matsuura
+ Description = matsuura web app
 [Service]
- ExecStart = /usr/bin/python3 /home/pi/matsuura_uploader/app.py
+ WorkingDirectory = /home/pi/matsuura_uploader
+ ExecStart = /usr/local/bin/gunicorn --workers 4 --bind 0.0.0.0:80 app:flask_app
+ #ExecStart = /usr/bin/python3 app.py
  Type = simple
 [Install]
  WantedBy=multi-user.target
-
-
