@@ -57,7 +57,6 @@ def log(s: str):
     # write string s to stderr with timestamp
     now = time.time()
     m_sec = int(now*1000 % 1000)
-    # message = s.removesuffix("\n")
     message = s
     if message[-1] == '\n':
         message = message[:-1]
@@ -133,6 +132,79 @@ def main():
                     'utf-8'))
 
 
+class FileToSend:
+    def __init__(self, file_name):
+        self.file_name = file_name
+        self.lines = []
+        self.read_file()
+
+    def read_file(self) -> None:
+        """ Read file into memory.
+
+            Builds the list of lines to transmit (without \r or \n) and makes
+            sure it starts with a blank line and ends with the needed % marker.
+
+            Only reads up to the % End-of-code marker and skips a beginning
+            % if there is one.
+
+            open() will throw OSError exception
+        """
+
+        saw_start_percent = False
+        with open(self.file_name) as fd:
+            while True:
+                line = fd.readline()
+                if line == "":  # EOF
+                    break
+                line = line.rstrip().upper()    # Strip \n, spaces, make upper
+                if len(lines) == 0:
+                    if line == "":
+                        # skip all initial blank lines.
+                        continue
+                    if not saw_start_percent and line[0] == "%":
+                        # We treat an initial '%' as a G code start of code
+                        # marker but we can not send it because the Matsuura
+                        # will treat it as an end of code marker and stop
+                        # reading. So we strip it, but we only strip one. The
+                        # next one we see is the end of code marker.
+                        saw_start_percent = True
+                        continue
+                if line == "":
+                    # Strip all blank lines. They are both unneeded, waste
+                    # precious space on the Matsuura limited memory, and
+                    # might risk an RS-232 Overrun issue.
+                    continue
+                # We have a non blank line
+                if line[0] == "%":  # end of code marker
+                    break
+                self.lines.append(line)
+
+        # End of file.
+
+        # Add a % to the end of the line buffer.
+        #
+        # Because there is a really odd bug here we add it to the end of the
+        # last line so it gets sent at the same time the last line is sent. The
+        # bug is if we are drip feeding slowly, and the M30 stop command at the
+        # end of the file gets executed before we send the %, then the Matsuura
+        # stops reading.  So CTS will never go low and we will be hung waiting
+        # for the Matsuura to ask for another line.  In drip feed (TAPE) mode,
+        # we could imply never bother to send the %. But when sending to load a
+        # program into memory, the % is required.  Since we don't know if we
+        # are drip feeding or loading into memory, we must send the %.  So the
+        # simple hack I choose to use here, is to send it as part of the last
+        # line of the file.
+
+        if len(self.lines) == 0:
+            # There is no last line to add it to!
+            self.lines.append("%")
+        else:
+            self.lines[-1] += "\n%"
+
+        # Add initial blank line for the Matsuura LSK (Leader Skip) to eat.
+        self.lines.insert(0, "")
+
+
 def list_ports():
     # list available ports. For debugging
     iterator = serial.tools.list_ports.comports()
@@ -179,6 +251,7 @@ def serial_check_and_open():
 
 
 def process_inbound_socket_connections():
+    """ Why is this not a doc string. """
     # e('select()')
 
     # select() returns all the connections and their statuses
