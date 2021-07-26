@@ -157,7 +157,7 @@ class FileToSend:
                 if line == "":  # EOF
                     break
                 line = line.rstrip().upper()    # Strip \n, spaces, make upper
-                if len(lines) == 0:
+                if len(self.lines) == 0:
                     if line == "":
                         # skip all initial blank lines.
                         continue
