@@ -1,2 +1,0 @@
-echo file is $1
-echo '{"cmd": "start", "file": "'$1'"}' | nc localhost 1111
