@@ -17,7 +17,7 @@ python3 /usr/lib/python3/dist-packages/serial/tools/miniterm.py --rtscts --rts 1
 
 # 9/29 haven't proven RTS/CTS handshake working in above config
 
-A Change.
+This is the test version installed on the Pi 7-25-2021 Curt
 
 """
 import socket
