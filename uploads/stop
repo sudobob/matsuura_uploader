@@ -1,0 +1,1 @@
+echo '{"cmd": "stop"}' | nc localhost 1111

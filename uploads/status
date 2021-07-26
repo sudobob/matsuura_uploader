@@ -1,0 +1,1 @@
+echo '{"cmd": "status"}' | nc localhost 1111
