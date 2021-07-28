@@ -282,6 +282,7 @@ def serial_check_and_open():
         except serial.SerialException as er:
             log(er.strerror)
             serial_connection = None
+            time.sleep(1.0)
 
         if serial_connection is not None:
             log('Serial Port open [%s] success\n' % serial_port_name)
