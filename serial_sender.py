@@ -24,7 +24,6 @@ import socket
 import select
 import os
 import sys
-import typing
 from typing import Optional
 
 import serial
@@ -34,21 +33,130 @@ import random
 import dotenv
 import json
 
+
+class FileToSend:
+    def __init__(self, file_name):
+        self.file_name = file_name
+        self.line_buf = []      # Lines of file with \n stripped off.
+        self.lines_sent = 0     # Index of next line to send
+        self._read_file()
+
+    @property
+    def lines(self) -> int:
+        """ Total number of lines from file to be sent. """
+        return len(self.line_buf)
+
+    @property
+    def percent_sent(self) -> int:
+        """ Percent line_buf sent (0 to 100) """
+        return int(self.lines_sent * 100 / self.lines)
+
+    @property
+    def eof(self) -> bool:
+        return self.lines_sent >= len(self.line_buf)
+
+    @property
+    def status(self):
+        """ e.g. "Line 89/234 34%" """
+        status = f"Line {file_to_send.lines_sent}/{file_to_send.lines} " \
+                 f"{file_to_send.percent_sent}%"
+        return status
+
+    def _read_file(self) -> None:
+        """ Read file into memory.
+
+            Builds the list of line_buf to transmit (without \r or \n) and makes
+            sure it starts with a blank line and ends with the needed % marker.
+
+            Only reads up to the % End-of-code marker and skips a beginning
+            % if there is one.
+
+            open() will throw OSError exception
+        """
+
+        self.line_buf = []
+
+        saw_start_percent = False
+        with open(self.file_name) as fd:
+            while True:
+                line = fd.readline()
+                if line == "":  # EOF
+                    break
+                line = line.rstrip().upper()    # Strip \n, spaces, make upper
+                if len(self.line_buf) == 0:
+                    if line == "":
+                        # skip all initial blank line_buf.
+                        continue
+                    if not saw_start_percent and line[0] == "%":
+                        # We treat an initial '%' as a G code start of code
+                        # marker but we can not send it because the Matsuura
+                        # will treat it as an end of code marker and stop
+                        # reading. So we strip it, but we only strip one. The
+                        # next one we see is the end of code marker.
+                        saw_start_percent = True
+                        continue
+                if line == "":
+                    # Strip all blank line_buf. They are both unneeded, waste
+                    # precious space on the Matsuura limited memory, and
+                    # might risk an RS-232 Overrun issue.
+                    continue
+                # We have a non blank line
+                if line[0] == "%":  # end of code marker
+                    break
+                self.line_buf.append(line)
+
+        # End of file.
+
+        # Add a % to the end of the line buffer.
+        #
+        # Because there is a really odd bug here we add it to the end of the
+        # last line so it gets sent at the same time the last line is sent. The
+        # bug is if we are drip feeding slowly, and the M30 stop command at the
+        # end of the file gets executed before we send the %, then the Matsuura
+        # stops reading.  So CTS will never go low and we will be hung waiting
+        # for the Matsuura to ask for another line.  In drip feed (TAPE) mode,
+        # we could imply never bother to send the %. But when sending to load a
+        # program into memory, the % is required.  Since we don't know if we
+        # are drip feeding or loading into memory, we must send the %.  So the
+        # simple hack I choose to use here, is to send it as part of the last
+        # line of the file.
+
+        if len(self.line_buf) == 0:
+            # There is no last line to add it to!
+            self.line_buf.append("%")
+        else:
+            self.line_buf[-1] += "\n%"
+
+        # Add initial blank line for the Matsuura LSK (Leader Skip) to eat.
+        self.line_buf.insert(0, "")
+
+        self.lines_sent = 0
+
+    def next_line(self) -> Optional[str]:
+        """ Return next line to send (with \n), or None for EOF. """
+        if self.eof:
+            return None
+        line = self.line_buf[self.lines_sent] + '\n'
+        self.lines_sent += 1
+        return line
+
+
 dotenv.load_dotenv()  # get envars from .env
-
 server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-read_list = []
 
+read_list = []
 serial_port_name = os.environ.get('SERIAL_PORT_NAME', "/dev/ttyUSB0")
 serial_tcp_port = int(os.environ.get('SERIAL_TCP_PORT', 1111))
 upload_path = os.environ.get('UPLOAD_PATH', "/home/pi/matsuura_uploader/uploads")
 serial_connection: Optional[serial.Serial] = None
-file_to_send: Optional[typing.TextIO] = None
+file_to_send: Optional[FileToSend] = None
 file_first_line = False
 file_size: Optional[int] = None
-bytes_sent = None
-sent_percent = 0
+# bytes_sent = None
+# sent_percent = 0
+
 last_cts = None
+
 
 main_loop_iterations = 0
 
@@ -69,19 +177,22 @@ def main():
     global main_loop_iterations, file_to_send
     prep_socket()
     # e(gen_send_random_string() + '\n')
-    list_ports()
+    # list_ports()
     while True:
         if file_to_send is None:
-            time.sleep(.8)
+            # time.sleep(.8)
+            pass
             # e('sersender loop #%i\r' % (main_loop_iterations))
 
-        time.sleep(.02)     # TODO: Maybe needs to sleep based on how many chars sent?
+        # time.sleep(.02)     # TODO: Maybe needs to sleep based on how many chars sent?
+        time.sleep(.01)
         main_loop_iterations += 1
         # if not( main_loop_iterations%100):
         # e('sersender loop #%i\r' % (main_loop_iterations))
 
         serial_chores()
-        serial_check_and_open()
+        if serial_connection is None:
+            serial_check_and_open()
         pisc = process_inbound_socket_connections()
         sock = pisc[0]
         mesg_from_socket = pisc[1]
@@ -102,8 +213,6 @@ def main():
                 log('i\'ve been asked to stop sending\n')
                 if file_to_send is not None:
                     log('closing file\n')
-                    if file_to_send is not None:
-                        file_to_send.close()
                     file_to_send = None
                     sock.send(json.dumps(
                         {'error': 0, 'message': 'Stopped Sending'}).encode(
@@ -116,12 +225,12 @@ def main():
             elif mesg['cmd'] == 'status':
                 m = ''
                 if file_to_send is None:
-                    m += 'Idle '
+                    m += "Idle "
                 else:
-                    m += 'Sent %d%% ' % sent_percent
+                    m += file_to_send.status
 
-                if serial_connection.cts == 0:
-                    m += 'Flow Controlled'
+                if serial_connection.cts:
+                    m += ' Matsuura Waiting For Data'
 
                 log(m + '\n')
                 sock.send(
@@ -130,79 +239,6 @@ def main():
                 sock.send(json.dumps(
                     {'error': 1, 'message': 'Unknown command'}).encode(
                     'utf-8'))
-
-
-class FileToSend:
-    def __init__(self, file_name):
-        self.file_name = file_name
-        self.lines = []
-        self.read_file()
-
-    def read_file(self) -> None:
-        """ Read file into memory.
-
-            Builds the list of lines to transmit (without \r or \n) and makes
-            sure it starts with a blank line and ends with the needed % marker.
-
-            Only reads up to the % End-of-code marker and skips a beginning
-            % if there is one.
-
-            open() will throw OSError exception
-        """
-
-        saw_start_percent = False
-        with open(self.file_name) as fd:
-            while True:
-                line = fd.readline()
-                if line == "":  # EOF
-                    break
-                line = line.rstrip().upper()    # Strip \n, spaces, make upper
-                if len(self.lines) == 0:
-                    if line == "":
-                        # skip all initial blank lines.
-                        continue
-                    if not saw_start_percent and line[0] == "%":
-                        # We treat an initial '%' as a G code start of code
-                        # marker but we can not send it because the Matsuura
-                        # will treat it as an end of code marker and stop
-                        # reading. So we strip it, but we only strip one. The
-                        # next one we see is the end of code marker.
-                        saw_start_percent = True
-                        continue
-                if line == "":
-                    # Strip all blank lines. They are both unneeded, waste
-                    # precious space on the Matsuura limited memory, and
-                    # might risk an RS-232 Overrun issue.
-                    continue
-                # We have a non blank line
-                if line[0] == "%":  # end of code marker
-                    break
-                self.lines.append(line)
-
-        # End of file.
-
-        # Add a % to the end of the line buffer.
-        #
-        # Because there is a really odd bug here we add it to the end of the
-        # last line so it gets sent at the same time the last line is sent. The
-        # bug is if we are drip feeding slowly, and the M30 stop command at the
-        # end of the file gets executed before we send the %, then the Matsuura
-        # stops reading.  So CTS will never go low and we will be hung waiting
-        # for the Matsuura to ask for another line.  In drip feed (TAPE) mode,
-        # we could imply never bother to send the %. But when sending to load a
-        # program into memory, the % is required.  Since we don't know if we
-        # are drip feeding or loading into memory, we must send the %.  So the
-        # simple hack I choose to use here, is to send it as part of the last
-        # line of the file.
-
-        if len(self.lines) == 0:
-            # There is no last line to add it to!
-            self.lines.append("%")
-        else:
-            self.lines[-1] += "\n%"
-
-        # Add initial blank line for the Matsuura LSK (Leader Skip) to eat.
-        self.lines.insert(0, "")
 
 
 def list_ports():
@@ -221,6 +257,7 @@ def prep_socket():
     # called once to prepare the primary tcp listener socket
     global server_socket, read_list
     server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    log(f"port is {serial_tcp_port}")
     server_socket.bind(('', serial_tcp_port))
     server_socket.listen(1)
     log("Listening on port %d\n" % serial_tcp_port)
@@ -249,9 +286,10 @@ def serial_check_and_open():
         if serial_connection is not None:
             log('Serial Port open [%s] success\n' % serial_port_name)
 
+    return serial_connection
+
 
 def process_inbound_socket_connections():
-    """ Why is this not a doc string. """
     # e('select()')
 
     # select() returns all the connections and their statuses
@@ -298,23 +336,17 @@ def gen_send_random_string():
 def serial_start_send(filename):
     # open file and start sending on serial port
     global file_to_send
-    global file_first_line
-    global file_size
-    global bytes_sent
 
     if file_to_send is not None:
         return {'error': 1, 'message': 'Already Busy Sending.'}
 
     file_with_path = os.path.join(upload_path, filename)
     try:
-        file_to_send = open(file_with_path, 'r')
+        file_to_send = FileToSend(file_with_path)
     except OSError:
         file_to_send = None
         return {'error': 1, 'message': 'open [%s] FAIL' % filename}
 
-    file_size = os.stat(file_with_path)[6]
-    bytes_sent = 0
-    file_first_line = True
     return {'error': 0, 'message': 'Started sending [%s] ' % filename}
 
 
@@ -324,8 +356,8 @@ def serial_chores():
     global file_to_send
     global file_first_line
     global main_loop_iterations
-    global bytes_sent
-    global sent_percent
+    # global bytes_sent
+    # global sent_percent
     global last_cts
     global serial_connection
 
@@ -341,15 +373,11 @@ def serial_chores():
         serial_connection = None
         return
 
-    msg = f"serial_chores() start: cts[{cts:d}]"
+    msg = f"serial_chores() start cts: {cts!s:<5}"
 
     if file_to_send is not None:
-        msg += (' out_waiting[%d] bs[%d] fs[%d] pct[%d]' %
-                (serial_connection.out_waiting,
-                 bytes_sent,
-                 file_size,
-                 sent_percent
-                 ))
+        msg += f" out_waiting: {serial_connection.out_waiting:<3} " \
+               f" {file_to_send.status}"
 
     if cts != last_cts:
         last_cts = cts
@@ -359,51 +387,27 @@ def serial_chores():
     if file_to_send is None:
         return
 
-    # if True:  # doesn't seem necessary: serial_connection.out_waiting == 0 and serial_connection.cts == 1:
-    if serial_connection.out_waiting == 0 and serial_connection.cts:
-        # if True:
+    # if serial_connection.out_waiting == 0 and serial_connection.cts:
+    if serial_connection.out_waiting == 0:
         if msg is not None:
             log(msg)
-        if file_first_line:
-            line_from_file = "\n"
-            file_first_line = False
-        else:
-            line_from_file = file_to_send.readline().upper()
-        log(f'    read line_from_file[{line_from_file!r}]\n')
-        if line_from_file == '':
+        line_from_file = file_to_send.next_line()
+        # log(f'    read line_from_file[{line_from_file!r}]\n')
+        if line_from_file is None:
             log('    eof on file return.\n')
-            file_to_send.close()
             file_to_send = None
             return
-        if line_from_file == "%\n":
-            # The Matsuura stops at a %.
-            # Only send the %, not the \n
-            line_from_file = "%"
-            file_to_send.close()
-            file_to_send = None
-            log("    Writing only % -- end of file")
-        if line_from_file == "M30\n":
-            log('    M30 treating like EOF on file return.\n')
-            line_from_file = "M30\n%"
-            file_to_send.close()
-            file_to_send = None
 
         line_from_file_as_bytes = line_from_file.encode('utf-8')
-        log(f"SEND: {line_from_file!r}")
-        log(f"    writing {len(line_from_file_as_bytes)} bytes to file... ")
-        wret = serial_connection.write(line_from_file_as_bytes)
-        log(f"       ... DONE wrote {wret} bytes\n")
-        bytes_sent = bytes_sent + len(line_from_file_as_bytes)
+        log(f"SEND: {line_from_file!r} {len(line_from_file_as_bytes)} bytes")
+        _wret = serial_connection.write(line_from_file_as_bytes)
+        # log(f"       ... DONE wrote {wret} bytes\n")
+        # bytes_sent += len(line_from_file_as_bytes)
 
-        sent_percent = int((bytes_sent / file_size) * 100.0)
-
-        log('    chore done cts[%d] out_waiting[%d] bs[%d] fs[%d] pct[%d] [%s]\n' %
-            (serial_connection.cts,
-             serial_connection.out_waiting,
-             bytes_sent,
-             file_size,
-             sent_percent,
-             line_from_file.rstrip()))
+        log(f"    chore done cts: {cts!s:<5}"
+            f" out_waiting: {serial_connection.out_waiting:<3} "
+            f" {file_to_send.status}: "
+            )
 
 
 if __name__ == '__main__':
