@@ -38,9 +38,11 @@ import os
 import time
 import serial_sender
 from serial_sender import log
+from serial_sender import SerialPort
 
-serial_port_name = os.environ.get('SERIAL_PORT_NAME', "/dev/ttyUSB0")
-RTS_STOP_LINES = 10     # Tell sender to stop after this many \n received
+Serial_port_name = os.environ.get('SERIAL_PORT_NAME', "/dev/ttyUSB0")
+
+RTS_STOP_LINES = 5      # Tell sender to stop after this many \n received
 RTS_STOP_TIME = .5      # seconds to pause before telling sender to start
 
 
@@ -60,7 +62,7 @@ def main_loop():
     time_to_go = time.time()
     time_stopped = time.time()
     time_after_read_last = time.time()
-    tty = None
+    tty = SerialPort(Serial_port_name)
     line_cnt = 0
     late_data = ""          # total data received after RTS turned off
     worse_delay = 0
@@ -69,12 +71,11 @@ def main_loop():
     worse_late_delay = 0    # Total time to receive late data in seconds.
 
     while True:
-        if tty is None:
-            tty = serial_sender.serial_check_and_open()
-            if tty is None:
-                time.sleep(0.5)     # Wait for port to open
-                continue
-            tty.timeout = 1.0
+        tty.check_open()
+
+        if tty.is_not_open:
+            time.sleep(1.0)
+            continue
 
         now = time.time()
         # log(f"now is {now} and time_to_go is {time_to_go}")

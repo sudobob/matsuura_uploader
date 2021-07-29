@@ -20,6 +20,7 @@ python3 /usr/lib/python3/dist-packages/serial/tools/miniterm.py --rtscts --rts 1
 This is the test version installed on the Pi 7-25-2021 Curt
 
 """
+
 import socket
 import select
 import os
@@ -33,13 +34,282 @@ import random
 import dotenv
 import json
 
+DEFAULT_SERIAL_PORT_NAME = "/dev/ttyUSB0"
+DEFAULT_TCP_PORT = 1111
+DEFAULT_UPLOAD_PATH = "/home/pi/matsuura_uploader/uploads"
+
+ADD_PERCENT_TO_END_OF_LAST_COMMAND = False
+
+# TODO catch non-gcode files with error -- long lines can create sender block
+# TODO clean up documentation
+# TODO reread all the code to look for something I missed in huge refactor
+# TODO what about the last % (do we need to do special testing?)
+# TODO figure out what he white cable worked when the FTDI did not.
+
+
+class SerialSender:
+    """ Matsuura SerialSender Daemon
+    """
+    def __init__(self):
+        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.read_list = []
+
+        dotenv.load_dotenv()  # get environ vars from .env
+
+        self.serial_port_name = \
+            os.environ.get('SERIAL_PORT_NAME', DEFAULT_SERIAL_PORT_NAME)
+        self.tcp_port = int(os.environ.get('SERIAL_TCP_PORT', DEFAULT_TCP_PORT))
+        self.upload_path = os.environ.get('UPLOAD_PATH', DEFAULT_UPLOAD_PATH)
+
+        self.serial_port = SerialPort(self.serial_port_name)
+        self.file_to_send: Optional[FileToSend] = None
+
+        self.sticky_status: Optional[str] = None
+
+        self.last_cts = False
+        self.time_to_check_again = time.time()
+
+    def run(self):
+        self.prep_socket()
+        # sys.stderr.write(gen_send_random_string() + '\n')
+        # list_ports()
+        while True:
+            self.serial_port.check_open()
+
+            if self.serial_port.is_not_open and self.file_to_send is not None:
+                # We lost the serial port, abort the file send.
+                log(f"Lost serial port, abort sending {self.file_to_send.name}")
+                self.file_to_send: Optional[FileToSend] = None
+
+            if self.serial_port.is_open and time.time() > self.time_to_check_again:
+                self.serial_chores()
+
+            sock, mesg_from_socket = self.process_inbound_socket_connections()
+
+            if mesg_from_socket != '':
+                # process inbound message
+                log(f'Message received: {mesg_from_socket!r}\n')
+                mesg = json.loads(mesg_from_socket.lower())
+                command = mesg.get("cmd")
+
+                if command is None:
+                    self.send_err(sock, "Missing 'cmd' label in request")
+
+                elif command == 'start':
+                    file = mesg.get("file")
+                    if file is None:
+                        self.send_err(sock, "Missing 'file' label in start request.")
+                    else:
+                        self.sticky_status: Optional[str] = None
+                        self.serial_start_send(sock, file)
+
+                elif command == 'stop':
+                    if self.file_to_send is not None:
+                        file_name = self.file_to_send.name
+                        log(f"Closing file: {file_name}")
+                        self.file_to_send: Optional[FileToSend] = None
+                        self.sticky_status = f"Stopped sending: {file_name}"
+                        self.send_ok(sock, self.sticky_status)
+                    else:
+                        self.sticky_status: Optional[str] = None
+                        self.send_err(sock, "Already stopped")
+
+                elif command == 'status':
+                    m = 'Idle'
+                    if self.sticky_status:
+                        # This is a saved status that needs to hang around
+                        # to be sure the user sees it on the next web page
+                        # update.  Really useful for "file sent" but also used
+                        # to make other messages sticky.
+                        m = self.sticky_status
+
+                    if self.serial_port.is_not_open:
+                        m = f"Cannot open serial port: {self.serial_port.port_name}"
+                    elif self.file_to_send is not None:
+                        m = self.file_to_send.status
+
+                    self.send_ok(sock, m)
+                else:
+                    self.send_err(sock, "Unknown command")
+
+    def send_ok(self, sock, message):
+        self.send_response(sock, 0, message)
+
+    def send_err(self, sock, message):
+        self.send_response(sock, 1, message)
+
+    def send_response(self, sock, error, message):
+        response = json.dumps({"error": error, "message": message})
+        log(f"Response to client: {response!r}")
+        sock.send(response.encode("utf-8"))
+
+    def prep_socket(self):
+        """ called once to prepare the primary tcp listener socket """
+        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # log(f"port is {self.tcp_port}")
+        self.server_socket.bind(('', self.tcp_port))
+        self.server_socket.listen(1)
+        log("Listening on TCP port %d\n" % self.tcp_port)
+
+        self.read_list = [self.server_socket]  # read list is the list of tcp ports
+
+    def process_inbound_socket_connections(self):
+        """ select() returns all the connections and their statuses """
+
+        timeout = 1.0  # check status of serial every second
+        if self.serial_port.is_open and self.file_to_send is not None:
+            now = time.time()
+            if now > self.time_to_check_again:
+                timeout = now - self.time_to_check_again
+            else:
+                timeout = 0.001
+        if timeout > 1.0:
+            timeout = 1.0
+
+        # log(f"select with timeout of {timeout:.6f} ")
+        readable, writable, errored = \
+            select.select(self.read_list, [], [], timeout)
+
+        for s in readable:
+            # for anything inbound...
+            if s is self.server_socket:
+                # new connections will appear on server_socket
+                client_socket, address = self.server_socket.accept()
+                self.read_list.append(client_socket)    # put it on our read_list
+                log("Connection from: %s:%s\n" % (address[0], address[1]))
+            else:
+                # handle messages from client connections
+                mesgb = b''
+                try:
+                    mesgb = s.recv(1024)
+                except OSError:
+                    log('socket reset')
+
+                if mesgb:
+                    # extract message.
+                    try:
+                        mesg = mesgb.decode('utf-8')  # attempt to convert
+                    except UnicodeError:
+                        return [s, mesgb]       # send raw if unable
+                    return [s, mesg.rstrip()]   # otherwise send utf-8 version
+                else:
+                    # otherwise connection must have shut down
+                    # log("Disconnecting from client")
+                    self.read_list.remove(s)
+                    s.close()
+
+        return ['', '']  # if select() returns w/nothing readable return empty
+
+    def serial_start_send(self, sock, filename):
+        """ open file and start sending on serial port """
+
+        if self.file_to_send is not None:
+            self.send_err(sock, f"Already Busy Sending {self.file_to_send.name}")
+            return
+
+        if self.serial_port.is_not_open:
+            self.send_err(sock, f"Can't send, serial port is broken")
+            return
+
+        file_with_path = os.path.join(self.upload_path, filename)
+        try:
+            self.file_to_send = FileToSend(file_with_path)
+        except OSError:
+            self.file_to_send: Optional[serial.Serial] = None
+            self.send_err(sock, f"open [{filename}] FAIL")
+            return
+
+        self.send_ok(sock, f"Started sending [{self.file_to_send.name}] ")
+
+    def serial_chores(self):
+        """
+            call periodically
+            if file is open, send another line
+        """
+
+        try:
+            cts = self.serial_port.cts
+        except OSError as err:  # TODO need to check for this over a wider scope
+            log(f"USB Unplugged: {err.strerror}")
+            # Someone unplugged the USB cable
+            self.serial_port.close()
+            return
+
+        msg = f"serial_chores() start cts: {cts!s:<5}"
+
+        if self.file_to_send is not None:
+            msg += f" out_waiting: {self.serial_port.out_waiting:<3} " \
+                   f" {self.file_to_send.status}"
+
+        if cts != self.last_cts:
+            self.last_cts = cts
+            log(msg)
+            msg = None
+
+        if self.file_to_send is None:
+            return
+
+        # if serial_connection.out_waiting == 0:
+        if self.serial_port.out_waiting == 0 and self.serial_port.cts:
+            if msg is not None:
+                log(msg)
+            line_from_file = self.file_to_send.next_line()
+            # log(f'    read line_from_file[{line_from_file!r}]\n')
+            if line_from_file is None:
+                log('    EOF on file return.\n')
+                self.sticky_status = self.file_to_send.status
+                self.file_to_send: Optional[FileToSend] = None
+                return
+
+            line_from_file_as_bytes = line_from_file.encode('utf-8')
+            log(f"SEND: {line_from_file!r} {len(line_from_file_as_bytes)} bytes")
+            bytes_sent = self.serial_port.write(line_from_file_as_bytes)
+            if bytes_sent > 0:
+                # Don't try to send more until these bytes have had time
+                # to be sent. (9600 baud is 960 characters per second)
+                self.time_to_check_again = time.time() + (bytes_sent - 1) / 960
+
+            log(f"    chore done cts: {cts!s:<5}"
+                f" out_waiting: {self.serial_port.out_waiting:<3} "
+                f" {self.file_to_send.status}"
+                )
+
 
 class FileToSend:
+    """" File To Send to Matsuura.
+
+        Reads entire file into memory.
+        Fixes issues to prep for sending.
+        Strips training spaces and \r and \n.
+        Ignores/removes blank lines.
+
+        Adds trailing spaces to ensure all lines are at least 3
+            characters (not counting CR LF) to fix a timing bug with the
+            Matsuura to prevent RS-232 Overrun Alarms.
+
+        Strips % at beginning of file (common G-code convention to
+            put % at the beginning and end of code), but we must not
+            send it because the Matsuura stops reading on %.
+            Only works if there are only blank lines before the %.  If
+            there are Leader comments, this is not dealt with.
+
+        Looks for % end marker and ignores rest of file.
+        Adds % in buffer to be sent.
+    """
     def __init__(self, file_name):
-        self.file_name = file_name
-        self.line_buf = []      # Lines of file with \n stripped off.
-        self.lines_sent = 0     # Index of next line to send
+        """ Reads and cleans up entire file into memory on creation.
+            Raises OSError on file open error. """
+
+        self.file_name = file_name  # Full name with path
+        self.line_buf = []          # Lines of file with \n stripped off.
+        self.lines_sent = 0         # Index of next line to send
+
         self._read_file()
+
+    @property
+    def name(self):
+        """ Base file name without path. """
+        return os.path.basename(self.file_name)
 
     @property
     def lines(self) -> int:
@@ -57,9 +327,11 @@ class FileToSend:
 
     @property
     def status(self):
-        """ e.g. "Line 89/234 34%" """
-        status = f"Line {file_to_send.lines_sent}/{file_to_send.lines} " \
-                 f"{file_to_send.percent_sent}%"
+        """ e.g. "Sending 1001.nc, Line 89/234 38%" """
+        status = f"Sending {self.name}, Line {self.lines_sent}/{self.lines} " \
+                 f"{self.percent_sent}%"
+        if self.lines_sent >= self.lines:
+            status = f"Finished sending: {self.name}, {self.lines} lines, 100%"
         return status
 
     def _read_file(self) -> None:
@@ -96,13 +368,18 @@ class FileToSend:
                         saw_start_percent = True
                         continue
                 if line == "":
-                    # Strip all blank line_buf. They are both unneeded, waste
-                    # precious space on the Matsuura limited memory, and
-                    # might risk an RS-232 Overrun issue.
+                    # Strip all blank lines.
                     continue
                 # We have a non blank line
                 if line[0] == "%":  # end of code marker
                     break
+                while len(line) < 3:
+                    # Short lines like "M06\n" (4 chars) seemed to have been
+                    # a key part of the Matsuura RS-232 Over-run Alarm so
+                    # I'm going to just pad all short lines with spaces
+                    # to make sure "M6" becomes "M6 " as well
+                    # as adding \r\n instead of just \n.
+                    line += ' '
                 self.line_buf.append(line)
 
         # End of file.
@@ -121,11 +398,16 @@ class FileToSend:
         # simple hack I choose to use here, is to send it as part of the last
         # line of the file.
 
-        if len(self.line_buf) == 0:
-            # There is no last line to add it to!
-            self.line_buf.append("%")
+        if ADD_PERCENT_TO_END_OF_LAST_COMMAND:
+            # Use this complex hack
+            if len(self.line_buf) == 0:
+                # There is no last line to add it to!
+                self.line_buf.append("%")
+            else:
+                self.line_buf[-1] += "\r\n%"
         else:
-            self.line_buf[-1] += "\n%"
+            # Don't use the hack, just put the % on a line by itself.
+            self.line_buf.append("%")
 
         # Add initial blank line for the Matsuura LSK (Leader Skip) to eat.
         self.line_buf.insert(0, "")
@@ -133,36 +415,131 @@ class FileToSend:
         self.lines_sent = 0
 
     def next_line(self) -> Optional[str]:
-        """ Return next line to send (with \n), or None for EOF. """
+        """ Return next line to send (with CR LF added)
+            None for EOF. """
         if self.eof:
             return None
-        line = self.line_buf[self.lines_sent] + '\n'
+        line = self.line_buf[self.lines_sent]
+        if not (len(line) and line[-1] == '%'):
+            # Add \r\n to line unless it's the % ebd-of-file-marker.
+            # We don't add it after the % because the Matsuura won't read the \n
+            # then it gets left in the buffers to be read at the beginning of
+            # the next input operation which can cause issues.
+            line += "\r\n"
         self.lines_sent += 1
         return line
 
 
-dotenv.load_dotenv()  # get envars from .env
-server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+class SerialPort:
+    """ The serial port to talk to the Matsuura. """
+    def __init__(self, port_name: str):
+        self.port_name = port_name      # e.g. "/dev/ttyUSB0"
+        self.serial_connection: Optional[serial.Serial] = None
+        self.check_open()
 
-read_list = []
-serial_port_name = os.environ.get('SERIAL_PORT_NAME', "/dev/ttyUSB0")
-serial_tcp_port = int(os.environ.get('SERIAL_TCP_PORT', 1111))
-upload_path = os.environ.get('UPLOAD_PATH', "/home/pi/matsuura_uploader/uploads")
-serial_connection: Optional[serial.Serial] = None
-file_to_send: Optional[FileToSend] = None
-file_first_line = False
-file_size: Optional[int] = None
-# bytes_sent = None
-# sent_percent = 0
+    def check_open(self):
+        """ Check if port is open and working. Try to open if not.
 
-last_cts = None
+            return False if not, True if open and working.
 
+            self.err is exception if check failed.
+        """
+        # log(f"check open {self.is_open}")
+        if self.is_open:
+            # To verify it's still connected (USB not unplugged), check cts
+            try:
+                _ = self.cts
+            except OSError:
+                log(f"Lost Connection to {self.port_name}")
+                # will try to open below
+                self.serial_connection: Optional[serial.Serial] = None
 
-main_loop_iterations = 0
+        if self.is_not_open:
+            # if serial connection is not open attempt to open
+            try:
+                self.open()
+            except serial.SerialException:
+                log(f"Cannot open: {self.port_name}")
+                self.serial_connection: Optional[serial.Serial] = None
+                return False
+
+            log(f"Serial port open: {self.port_name}")
+
+        return True
+
+    def open(self):
+        """ Open port with the correct Matsuura parameters.
+            9600 baud, 8 bit, No Parity, RTS/CTS Hardware Handshaking.
+            Will raise serial.SerialException on error.
+        """
+        self.serial_connection = serial.Serial(self.port_name,
+                                               9600,
+                                               parity=serial.PARITY_NONE,
+                                               write_timeout=None,
+                                               xonxoff=False,
+                                               rtscts=True)
+
+    @property
+    def is_open(self) -> bool:
+        return not self.is_not_open
+
+    @property
+    def is_not_open(self) -> bool:
+        return self.serial_connection is None
+
+    @property
+    def cts(self) -> bool:
+        """ CTS wire is True or False. """
+        if self.is_open:
+            return self.serial_connection.cts
+        return False
+
+    @property
+    def rts(self):
+        if self.is_open:
+            return self.serial_connection.rts
+        return False
+
+    @rts.setter
+    def rts(self, value: bool):
+        if self.is_open:
+            self.serial_connection.rts = value
+
+    def read_all(self):
+        """ Read bytes from serial port. Returns what is available.
+
+            Might return None at times, I'm not sure...
+        """
+        if self.is_open:
+            return self.serial_connection.read_all()
+        return ""
+
+    def write(self, byte_buf):
+        """ Write bytes to serial port. Will block if you write too many. """
+        if self.is_open:
+            return self.serial_connection.write(byte_buf)
+        return None
+
+    def close(self):
+        if self.is_open:
+            self.serial_connection.close()
+        self.serial_connection: Optional[serial.Serial] = None
+
+    @property
+    def out_waiting(self) -> int:
+        """ Number of chars buffered in local output buffer.
+            There are other buffers for USB ports that do not show up
+            in this number.  Testing on a MacBook, the write to the
+            port would hang when this number plus the characters to write
+            exceed about 512.
+        """
+        if self.is_open:
+            return self.serial_connection.out_waiting
+        return 0
 
 
 def log(s: str):
-    # write string s to stderr with timestamp
+    """ Write string s to stderr with ms timestamp. """
     now = time.time()
     m_sec = int(now*1000 % 1000)
     message = s
@@ -171,74 +548,6 @@ def log(s: str):
     t = time.localtime(now)
     sys.stderr.write(f"{t.tm_hour:02d}:{t.tm_min:02d}:{t.tm_sec:02d}.{m_sec:03d}")
     sys.stderr.write(f" {message}\n")
-
-
-def main():
-    global main_loop_iterations, file_to_send
-    prep_socket()
-    # e(gen_send_random_string() + '\n')
-    # list_ports()
-    while True:
-        if file_to_send is None:
-            # time.sleep(.8)
-            pass
-            # e('sersender loop #%i\r' % (main_loop_iterations))
-
-        # time.sleep(.02)     # TODO: Maybe needs to sleep based on how many chars sent?
-        time.sleep(.01)
-        main_loop_iterations += 1
-        # if not( main_loop_iterations%100):
-        # e('sersender loop #%i\r' % (main_loop_iterations))
-
-        serial_chores()
-        if serial_connection is None:
-            serial_check_and_open()
-        pisc = process_inbound_socket_connections()
-        sock = pisc[0]
-        mesg_from_socket = pisc[1]
-
-        if mesg_from_socket != '':
-            # process inbound message
-            log(f'{mesg_from_socket!r}\n')
-            mesg = json.loads(mesg_from_socket.lower())
-
-            if mesg['cmd'] == 'start':
-                f = mesg["file"]
-                log(f"got start message file:{f}")
-                sssret = serial_start_send(mesg['file'])
-                ssret_as_json_str = json.dumps(sssret).encode('utf-8')
-                sock.send(ssret_as_json_str)
-
-            elif mesg['cmd'] == 'stop':
-                log('i\'ve been asked to stop sending\n')
-                if file_to_send is not None:
-                    log('closing file\n')
-                    file_to_send = None
-                    sock.send(json.dumps(
-                        {'error': 0, 'message': 'Stopped Sending'}).encode(
-                        'utf-8'))
-                else:
-                    sock.send(json.dumps(
-                        {'error': 1, 'message': 'Already Stopped'}).encode(
-                        'utf-8'))
-
-            elif mesg['cmd'] == 'status':
-                m = ''
-                if file_to_send is None:
-                    m += "Idle "
-                else:
-                    m += file_to_send.status
-
-                if serial_connection.cts:
-                    m += ' Matsuura Waiting For Data'
-
-                log(m + '\n')
-                sock.send(
-                    json.dumps({'error': 0, 'message': m}).encode('utf-8'))
-            else:
-                sock.send(json.dumps(
-                    {'error': 1, 'message': 'Unknown command'}).encode(
-                    'utf-8'))
 
 
 def list_ports():
@@ -253,164 +562,12 @@ def list_ports():
     return port_names
 
 
-def prep_socket():
-    # called once to prepare the primary tcp listener socket
-    global server_socket, read_list
-    server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    log(f"port is {serial_tcp_port}")
-    server_socket.bind(('', serial_tcp_port))
-    server_socket.listen(1)
-    log("Listening on port %d\n" % serial_tcp_port)
-
-    read_list = [server_socket]  # read list is the list of tcp ports
-
-
-def serial_check_and_open():
-    global serial_connection
-    if serial_connection is None:
-        # if serial connection is not open attempt to open
-        try:
-            serial_connection = \
-                serial.Serial(serial_port_name,
-                              9600,
-                              parity=serial.PARITY_NONE,
-                              write_timeout=None,
-                              # write_timeout=0, has no effect on small files where nothing is waiting
-                              xonxoff=False,
-                              rtscts=True)
-
-        except serial.SerialException as er:
-            log(er.strerror)
-            serial_connection = None
-            time.sleep(1.0)
-
-        if serial_connection is not None:
-            log('Serial Port open [%s] success\n' % serial_port_name)
-
-    return serial_connection
-
-
-def process_inbound_socket_connections():
-    # e('select()')
-
-    # select() returns all the connections and their statuses
-    readable, writable, errored = select.select(read_list, [], [], 0)
-    for s in readable:
-        # for anything inbound...
-        if s is server_socket:
-            # new connections will appear on server_socket
-            client_socket, address = server_socket.accept()
-            read_list.append(
-                client_socket)  # put it on our read_list of sockets
-            log("Connection from: %s:%s\n" % (address[0], address[1]))
-        else:
-            # handle messages from client connections
-            mesgb = b''
-            try:
-                mesgb = s.recv(1024)
-            except:
-                log('socket reset')
-
-            if mesgb:
-                # extract message.
-                try:
-                    mesg = mesgb.decode(
-                        'utf-8')  # attempt to convert bytes to utf-8 string
-                except UnicodeError:
-                    return [s, mesgb]  # send raw if unable
-                return [s, mesg.rstrip()]  # otherwise send utf-8 version
-            else:
-                # otherwise connection must have shut down
-                log("disconnecting from client\n")
-                s.close()
-                read_list.remove(s)
-
-    return ['', '']  # if select() returns w/nothing readable return empty
-
-
 def gen_send_random_string():
     # you never know when you are going to need to send a random string..
     chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
     return ''.join([random.choice(chars) for _ in range(32)])
 
 
-def serial_start_send(filename):
-    # open file and start sending on serial port
-    global file_to_send
-
-    if file_to_send is not None:
-        return {'error': 1, 'message': 'Already Busy Sending.'}
-
-    file_with_path = os.path.join(upload_path, filename)
-    try:
-        file_to_send = FileToSend(file_with_path)
-    except OSError:
-        file_to_send = None
-        return {'error': 1, 'message': 'open [%s] FAIL' % filename}
-
-    return {'error': 0, 'message': 'Started sending [%s] ' % filename}
-
-
-def serial_chores():
-    # call periodically
-    # if file is open, send another line
-    global file_to_send
-    global file_first_line
-    global main_loop_iterations
-    # global bytes_sent
-    # global sent_percent
-    global last_cts
-    global serial_connection
-
-    if serial_connection is None:
-        return
-
-    try:
-        cts = serial_connection.cts
-    except OSError as err:
-        log(f"USB Unplugged: {err.strerror}")
-        # Someone unplugged the USB cable
-        serial_connection.close()
-        serial_connection = None
-        return
-
-    msg = f"serial_chores() start cts: {cts!s:<5}"
-
-    if file_to_send is not None:
-        msg += f" out_waiting: {serial_connection.out_waiting:<3} " \
-               f" {file_to_send.status}"
-
-    if cts != last_cts:
-        last_cts = cts
-        log(msg)
-        msg = None
-
-    if file_to_send is None:
-        return
-
-    # if serial_connection.out_waiting == 0 and serial_connection.cts:
-    if serial_connection.out_waiting == 0:
-        if msg is not None:
-            log(msg)
-        line_from_file = file_to_send.next_line()
-        # log(f'    read line_from_file[{line_from_file!r}]\n')
-        if line_from_file is None:
-            log('    eof on file return.\n')
-            file_to_send = None
-            return
-
-        line_from_file_as_bytes = line_from_file.encode('utf-8')
-        log(f"SEND: {line_from_file!r} {len(line_from_file_as_bytes)} bytes")
-        _wret = serial_connection.write(line_from_file_as_bytes)
-        # log(f"       ... DONE wrote {wret} bytes\n")
-        # bytes_sent += len(line_from_file_as_bytes)
-
-        log(f"    chore done cts: {cts!s:<5}"
-            f" out_waiting: {serial_connection.out_waiting:<3} "
-            f" {file_to_send.status}: "
-            )
-
-
 if __name__ == '__main__':
-    main()
+    SerialSender().run()
     exit(0)
