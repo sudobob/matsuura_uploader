@@ -210,7 +210,7 @@ class SerialSender:
                         self.sticky_status: Optional[str] = None
                         self.serial_start_send(sock, file)
 
-                elif command == 'stop':
+                elif command == "stop":
                     if self.file_to_send is not None:
                         file_name = self.file_to_send.name
                         log(f"Closing file: {file_name}")
@@ -221,8 +221,8 @@ class SerialSender:
                         self.sticky_status: Optional[str] = None
                         self.send_err(sock, "Already stopped")
 
-                elif command == 'status':
-                    m = 'Idle'
+                elif command == "status":
+                    m = "Idle"
                     if self.sticky_status:
                         # This is a saved status that needs to hang around
                         # to be sure the user sees it on the next web page
@@ -370,6 +370,13 @@ class SerialSender:
         if self.file_to_send is None:
             return
 
+        if self.file_to_send.eof:
+            # No need to try reading.
+            log(f"EOF: {self.file_to_send.status}")
+            self.sticky_status = self.file_to_send.status
+            self.file_to_send: Optional[FileToSend] = None
+            return
+
         # if serial_connection.out_waiting == 0:
         if self.serial_port.out_waiting == 0 and self.serial_port.cts:
             line_from_file = self.file_to_send.read_line(max_size=50)
@@ -386,14 +393,14 @@ class SerialSender:
             # even if it doesn't create run errors.
             # You have been warned.
             if line_from_file is None:
-                log(f"EOF: {self.file_to_send.status}")
-                self.sticky_status = self.file_to_send.status
-                self.file_to_send: Optional[FileToSend] = None
+                # Should never happen because we checked for eof above.
+                log(f"serial_chores(): should never happen: read_line returns None")
+                # Just return and handle it above on next call.
                 return
 
             line_from_file_as_bytes = line_from_file.encode('utf-8')
             if DEBUG_SEND:
-                log(f"SEND: {len(line_from_file_as_bytes):3} {line_from_file!r} ")
+                log(f"SEND: {len(line_from_file_as_bytes):3} {line_from_file!r}")
             bytes_sent = self.serial_port.write(line_from_file_as_bytes)
             if bytes_sent > 0:
                 # Don't try to send more until these bytes have had time
