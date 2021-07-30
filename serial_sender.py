@@ -474,7 +474,7 @@ class FileToSend:
                  f"{self.percent_sent}%"
         if self.lines_sent >= self.lines:
             status = f"Finished sending: {self.name}," \
-                    f" {self.lines} lines, 100%, crc32: {self.crc32_value:08X}"
+                    f" {self.lines} lines, 100%, crc: {self.crc32_value:08X}"
         return status
 
     def _read_file(self) -> None:

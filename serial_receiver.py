@@ -144,7 +144,7 @@ def main_loop():
             worse_cnt = 0
             worse_late_data = ""
             worse_late_delay = 0  # Total time to receive late data in seconds.
-            log(f"END OF G-code, crc32: {crc32_value:08X}")
+            log(f"END OF G-code, crc: {crc32_value:08X}")
             crc32_value = 0
 
         line_cnt += data.count('\n')
