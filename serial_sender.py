@@ -1,10 +1,31 @@
 """
 
-serial port <> socket daemon for use with matsuura drip feed application
+serial_sender.py - daemon to send G-code to our Matsuura over RS-232
 
-listens on a tcp port for connections, probably from web server
+listens on a tcp port for commands, normally from the web server,
+while sending data over an RS-232 serial tty port.
 
-takes commands like 'send <file>', 'status', etc.
+Receives json encoded commands e.g.: {"cmd": "start", "file": "1001.nc"}
+Response is coded as: {"error": 0, "message": "File Started"}
+Error of 0 means no error.  Error of 1, means something is wrong.
+
+Other commands supported are "stop", and "status".  Neither take an argument.
+"stop" aborts the current sending file, and "status" returns a text
+description of the daemon status (sending, idle, finished send, etc).
+
+Supports simultaneous connections from the network for command and control
+but only supports sending data on one RS-232 port.
+
+Notice: This is custom configured to work with the Nova Labs Matsuura with all
+it's special needs and requirements, based on how we have the machine
+configured. Do not expect it to work correctly for other CNC machines without
+careful testing. In addition, the Matsuura MX3 controller has many parameters
+that can be adjusted for how it deals with the RS-232 port.  Such as parity,
+which it set to ignore now, and the use of RTS/CTS for flow control vs
+XON/XOFF (it can support both). And that it uses % to signal the end of
+the G-code, not the G-code stop commands, like M30.  This code, is tuned
+to work with our Matsuura as configured. Change the Matsuura configuration
+and this won't likely work.
 
 To test:
 
@@ -14,10 +35,94 @@ run this code on one of them
 run this on the other one
 
 python3 /usr/lib/python3/dist-packages/serial/tools/miniterm.py --rtscts --rts 1 /dev/ttyUSB1 9600
-
 # 9/29 haven't proven RTS/CTS handshake working in above config
 
-This is the test version installed on the Pi 7-25-2021 Curt
+See also: serial_receiver.py in this code base.  It is an RS-232 receiver
+to replace the miniterm in the above testing procedure and emulates the
+behavior of the Matsuura for stopping and starting flow with RTS to prove
+that flow control is working and to help diagnose a bug we had with
+RS-232 Overflow alarms on the Matsuura.
+
+2021-07-30 This code had a major overall - Curt Welch curt@kcwc.com
+
+Most the code changes dealt with clean handling of errors, which were
+not tested for in the old version, like starting a new file, while in
+the middle of sending a file, was not prevented in the old.
+
+The RS-232 Overrun alarm bug was fixed by sending not just \n, but both
+\r and \n for each line.  The bug was really on the Matsuura side in that
+it did not tell the sender to stop sending fast enough, if the data being
+sent were very short G-Code blocks like "M06" and "M30".  A string of these
+one command blocks at the end of the job triggered the alarm.  I believe
+the issue was that the the matsuura didn't expect it to be possible to
+encode more than two blocks of G-code lines in less than 10 characters. With
+only an on each line, these commands only take 4 characters each, and 10
+characters will code more than two blocks.  This is only an educated guess
+because the truth is hidden inside the Matsuura.
+
+In addition to sending CR LF to make the commands longer, I also pad any
+short lines (like M3) with spaces to make it at least three characters long.
+
+Other changes to the code included reading the entire file into memory and
+modifying it, to strip leading blank lines and an optional % start of G-code
+symbol, strip all blank lines, strip trailing spaces and CR and LF then
+adding spaces to short lines and CR LF to all lines.
+
+The End of code % marker is sent without a CR LF (the Matsuura seems not
+to need it, and those can end up being buffered and read at the start of
+the next transfer creating confusion for the users).
+
+Code was structured to deal with an odd Matsuura issue when drip feeding.
+At the end of job, when the Matsuura halts, on an M30 (or other commands)
+it stops reading from the RS-232 and turns RTS off.  If it has not read
+the % before this, the % will never be read, and the send file operation
+will just hand forever waiting for the Matsuura to read it.  This is mostly
+harmless, the user just needs to abort the send with the stop feature. But
+it creates the impression that this upload system is flaky, so I worked
+to prevent that by adding the % to the end of the last line, instead of sending
+it separately, so the last line of the G-code and the % get sent in one
+write command to the serial port to increase the odds that the Matsuura will
+read the % before it executes teh M30 and stops reading.
+
+A main feature of this new code is that it attempts to prevent the large
+OS and USB buffers from filling with G-Code not actually sent on the RS-232
+line. Not doing this, creates user confusion when the application say the
+file has finished sending, but yet 15K of G-code is still buffered and
+being sent. For small files, it can even make the user think the file was
+not sent, and cause them to hit the send button again, buffering up 2 copies
+of the same code in the OS buffers.  And because the application has no way
+to clear these buffers (well, mayne a tty close and re-open would do it?),
+the solution I took was to just make sure the OS buffers were never filled
+up.
+
+The solution to keeping the OS buffers empty was to never send data faster
+than 960 characters per second (after every write, the code will not try
+to write again until enough time has passed to allow all those
+to be transmitted), and second, to never send if the Matsuura had CTS
+turned off, or if the local buffers had any characters backlogged. This
+approach works well, but it not perfect.  Because we can't see the size
+of the OS buffer, we don't know for sure that we haven't filled it up by
+sending too much when the Matsuura was not ready for it.  The highly complex
+issue at play, is that when we see the Matsuura ask for data, with a
+CTS signal, and we write a big block of data, we might have written too much.
+The Matsuura might only hav been willing to accept say 10 chars before it
+turned RTS off, but we just sent 50.  If we keep making that mistake, we
+OS buffers will fill up and back log.
+
+Because the RTS.CTS works, this is not a hard error. It is ONLY a user
+confusion error.  If the user aborts the run (their job is not working),
+all the data in the OS buffers will keep being sent. Then when they try
+to restart the next job, the old un-sent data is going to be sent to the
+Matsuura.  To clear the buffers, the user must go to Memory Edit Mode,
+and hit IN and RESET multiple times, to make the matsuura eat the
+garbage that has been buffered.  Not a very user friendly result.  Which
+is why I worked so hard with this to try and keep the OS buffers empty.
+
+This errors on the side of slowing down the transfer, to gain the advantage
+of simpler use, and less confusion, and greater reliability and trust in the
+system.
+
+Curt Welch
 
 """
 
@@ -37,6 +142,8 @@ import json
 DEFAULT_SERIAL_PORT_NAME = "/dev/ttyUSB0"
 DEFAULT_TCP_PORT = 1111
 DEFAULT_UPLOAD_PATH = "/home/pi/matsuura_uploader/uploads"
+
+BAUD = 9600     # Not meant to be changed
 
 ADD_PERCENT_TO_END_OF_LAST_COMMAND = True
 
@@ -74,6 +181,8 @@ class SerialSender:
         self.time_to_check_again = time.time()
 
     def run(self):
+        """ Main loop, never ends.
+        """
         self.prep_socket()
         # sys.stderr.write(gen_send_random_string() + '\n')
         # list_ports()
@@ -142,7 +251,8 @@ class SerialSender:
     def send_err(self, sock, message):
         self.send_response(sock, 1, message)
 
-    def send_response(self, sock, error, message):
+    @staticmethod
+    def send_response(sock, error, message):
         response = json.dumps({"error": error, "message": message})
         log(f"Response to client: {response!r}")
         sock.send(response.encode("utf-8"))
@@ -184,18 +294,18 @@ class SerialSender:
                 log("Connection from: %s:%s\n" % (address[0], address[1]))
             else:
                 # handle messages from client connections
-                mesgb = b''
+                data_buf = b''
                 try:
-                    mesgb = s.recv(1024)
+                    data_buf = s.recv(1024)
                 except OSError:
                     log('socket reset')
 
-                if mesgb:
+                if data_buf:
                     # extract message.
                     try:
-                        mesg = mesgb.decode('utf-8')  # attempt to convert
+                        mesg = data_buf.decode('utf-8')  # attempt to convert
                     except UnicodeError:
-                        return [s, mesgb]       # send raw if unable
+                        return [s, data_buf]       # send raw if unable
                     return [s, mesg.rstrip()]   # otherwise send utf-8 version
                 else:
                     # otherwise connection must have shut down
@@ -271,7 +381,8 @@ class SerialSender:
             if bytes_sent > 0:
                 # Don't try to send more until these bytes have had time
                 # to be sent. (9600 baud is 960 characters per second)
-                self.time_to_check_again = time.time() + (bytes_sent - 1) / 960
+                # 1 stop bit, 8 data, 1 stop so 10 bits per character sent.
+                self.time_to_check_again = time.time() + (bytes_sent - 1) / (BAUD/10)
 
             # log(f"    chore done cts: {cts!s:<5}"
             #     f" out_waiting: {self.serial_port.out_waiting:<3} "
@@ -585,6 +696,7 @@ def list_ports():
 
 def gen_send_random_string():
     # you never know when you are going to need to send a random string..
+    # noinspection SpellCheckingInspection
     chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
     return ''.join([random.choice(chars) for _ in range(32)])
 
