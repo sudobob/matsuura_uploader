@@ -148,8 +148,6 @@ BAUD = 9600     # Not meant to be changed
 DEBUG_SEND = False   # log sent data
 DEBUG_FLOW = False   # log CTS changes
 
-ADD_PERCENT_TO_END_OF_LAST_COMMAND = True   # Best to leave True
-
 # TODO reread all the code to look for something I missed in huge refactor
 # TODO figure out why the white cable worked when the FTDI did not.
 
@@ -374,7 +372,19 @@ class SerialSender:
 
         # if serial_connection.out_waiting == 0:
         if self.serial_port.out_waiting == 0 and self.serial_port.cts:
-            line_from_file = self.file_to_send.read_line(max_size=100)
+            line_from_file = self.file_to_send.read_line(max_size=50)
+            # NOTE: max_size controls the size of chunks we write
+            # to the RS-232 port since what we read here gets written
+            # in one write below. To keep the OS buffers from filling
+            # up (we try to keep them empty), we must not write more
+            # (on average) than what the Matsuura will typically read
+            # on a single RTS flow control on/off cycle, which has to
+            # do with how large the G-code blocks (lines) are, and how
+            # fast they re being performed.  Larger values help us run
+            # faster, but too large and we just start to back up the
+            # OS buffers which leads to great user confusion and problems
+            # even if it doesn't create run errors.
+            # You have been warned.
             if line_from_file is None:
                 if DEBUG_SEND:
                     log(f"SEND: EOF: {self.file_to_send.status}")
@@ -403,7 +413,7 @@ class FileToSend:
 
         Reads entire file into memory.
         Fixes issues to prep for sending.
-        Strips training spaces and \r and \n.
+        Strips training spaces and \r and \n then adds \r\n at end.
         Ignores/removes blank lines.
 
         Adds trailing spaces to ensure all lines are at least 3
@@ -412,19 +422,20 @@ class FileToSend:
 
         Strips % at beginning of file (common G-code convention to
             put % at the beginning and end of code), but we must not
-            send it because the Matsuura stops reading on %.
+            send it because the Matsuura stops reading on a line that
+            begins with %.
             Only works if there are only blank lines before the %.  If
             there are Leader comments, this is not dealt with.
 
         Looks for % end marker and ignores rest of file.
-        Adds % in buffer to be sent.
+        Adds % to end of last line to signal end of code.
     """
     def __init__(self, file_name):
         """ Reads and cleans up entire file into memory on creation.
             Raises OSError on file open error. """
 
         self.file_name = file_name      # Full name with path
-        self.line_buf: List[str] = []   # Lines of file with \n stripped off.
+        self.line_buf: List[str] = []   # Lines of file with \r\n on each.
         self.lines_sent = 0             # Index of next line to send
         self.read_buffer = ""           # Chars waiting to be sent
 
@@ -504,6 +515,7 @@ class FileToSend:
                     # to make sure "M6" becomes "M6 " as well
                     # as adding \r\n instead of just \n.
                     line += ' '
+                line += '\r\n'  # Put CR LF on every line
                 self.line_buf.append(line)
 
         # End of file.
@@ -512,29 +524,28 @@ class FileToSend:
         #
         # Because there is a really odd bug here we add it to the end of the
         # last line so it gets sent at the same time the last line is sent. The
-        # bug is if we are drip feeding slowly, and the M30 stop command at the
-        # end of the file gets executed before we send the %, then the Matsuura
-        # stops reading.  So CTS will never go low and we will be hung waiting
-        # for the Matsuura to ask for another line.  In drip feed (TAPE) mode,
+        # bug is if we are drip feeding slowly, and the M30 stop
+        # command at the end of the file gets executed before
+        # the Matsuura reads the %, then the Matsuura stops reading.
+        # So CTS will never go low and we will be hung waiting
+        # for the Matsuura to ask for more data so we can send the % to tell it
+        # there is nothing more to send!  In drip feed (TAPE) mode,
         # we could imply never bother to send the %. But when sending to load a
         # program into memory, the % is required.  Since we don't know if we
         # are drip feeding or loading into memory, we must send the %.  So the
         # simple hack I choose to use here, is to send it as part of the last
         # line of the file.
 
-        if ADD_PERCENT_TO_END_OF_LAST_COMMAND:
-            # Use this complex hack
-            if len(self.line_buf) == 0:
-                # There is no last line to add it to!
-                self.line_buf.append("%")
-            else:
-                self.line_buf[-1] += "\r\n%"
-        else:
-            # Don't use the hack, just put the % on a line by itself.
+        # We do not add a CR or LF after the %.
+
+        if len(self.line_buf) == 0:
+            # There is no last line to add it to!
             self.line_buf.append("%")
+        else:
+            self.line_buf[-1] += "%"
 
         # Add initial blank line for the Matsuura LSK (Leader Skip) to eat.
-        self.line_buf.insert(0, "")
+        self.line_buf.insert(0, "\r\n")
 
         self.lines_sent = 0
 
@@ -551,16 +562,6 @@ class FileToSend:
         else:
             line = self.line_buf[self.lines_sent]
             self.lines_sent += 1
-            if not (len(line) and line[-1] == '%'):
-                # Add \r\n to line unless it's the % end-of-file-marker.
-                # We don't add it after the % because the Matsuura won't read
-                # the \n then it gets left in the buffers to be read at the
-                # beginning of the next input operation which can cause issues.
-                #
-                # *** MUST *** add CR LF and not just LF because short lines
-                # triggered the RS-232 Overrun Alarm bug.
-                # Changing LF to CR LF fixed it.
-                line += "\r\n"
         if max_size:
             # Split into two parts
             self.read_buffer = line[max_size:]
@@ -621,8 +622,7 @@ class SerialPort:
                                                write_timeout=None,
                                                xonxoff=False,
                                                rtscts=True,
-                                               exclusive=True,
-                                               )
+                                               exclusive=True)
 
     @property
     def is_open(self) -> bool:
