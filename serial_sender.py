@@ -126,6 +126,7 @@ Curt Welch
 
 """
 
+import syslog
 import socket
 import select
 import os
@@ -150,6 +151,7 @@ DEBUG_FLOW = False   # log CTS changes
 
 # TODO reread all the code to look for something I missed in huge refactor
 # TODO figure out why the white cable worked when the FTDI did not.
+# TODO check load_dotenv() use and function
 
 
 class SerialSender:
@@ -701,8 +703,9 @@ def log(s: str):
     if message[-1] == '\n':
         message = message[:-1]
     t = time.localtime(now)
-    sys.stderr.write(f"{t.tm_hour:02d}:{t.tm_min:02d}:{t.tm_sec:02d}.{m_sec:03d}")
-    sys.stderr.write(f" {message}\n")
+    # sys.stderr.write(f"{t.tm_hour:02d}:{t.tm_min:02d}:{t.tm_sec:02d}.{m_sec:03d}")
+    # sys.stderr.write(f" {message}\n")
+    syslog.syslog(message)
 
 
 def list_ports():
