@@ -25,7 +25,7 @@ import socket
 import select
 import os
 import sys
-from typing import Optional
+from typing import Optional, List
 
 import serial
 import serial.tools.list_ports
@@ -40,14 +40,12 @@ DEFAULT_UPLOAD_PATH = "/home/pi/matsuura_uploader/uploads"
 
 ADD_PERCENT_TO_END_OF_LAST_COMMAND = True
 
-# TODO catch non-gcode files with error -- long lines can create sender block
 # TODO clean up documentation
 # TODO reread all the code to look for something I missed in huge refactor
 # TODO what about the last % (do we need to do special testing?)
-# TODO figure out what he white cable worked when the FTDI did not.
+# TODO figure out why the white cable worked when the FTDI did not.
 # TODO exclusive open of tty
 # TODO catch port in use bind error
-# TODO send in small chunks, not lines
 
 
 class SerialSender:
@@ -248,18 +246,16 @@ class SerialSender:
         if cts != self.last_cts:
             self.last_cts = cts
             log(msg)
-            msg = None
-
-        msg = None
+            # msg = None
 
         if self.file_to_send is None:
             return
 
         # if serial_connection.out_waiting == 0:
         if self.serial_port.out_waiting == 0 and self.serial_port.cts:
-            if msg is not None:
-                log(msg)
-            line_from_file = self.file_to_send.next_line()
+            # if msg is not None:
+            #     log(msg)
+            line_from_file = self.file_to_send.read_line(max_size=100)
             # log(f'    read line_from_file[{line_from_file!r}]\n')
             if line_from_file is None:
                 log('    EOF on file return.\n')
@@ -306,9 +302,10 @@ class FileToSend:
         """ Reads and cleans up entire file into memory on creation.
             Raises OSError on file open error. """
 
-        self.file_name = file_name  # Full name with path
-        self.line_buf = []          # Lines of file with \n stripped off.
-        self.lines_sent = 0         # Index of next line to send
+        self.file_name = file_name      # Full name with path
+        self.line_buf: List[str] = []   # Lines of file with \n stripped off.
+        self.lines_sent = 0             # Index of next line to send
+        self.read_buffer = ""           # Chars waiting to be sent
 
         self._read_file()
 
@@ -329,7 +326,7 @@ class FileToSend:
 
     @property
     def eof(self) -> bool:
-        return self.lines_sent >= len(self.line_buf)
+        return self.lines_sent >= len(self.line_buf) and self.read_buffer == ""
 
     @property
     def status(self):
@@ -420,19 +417,35 @@ class FileToSend:
 
         self.lines_sent = 0
 
-    def next_line(self) -> Optional[str]:
+    def read_line(self, max_size=0) -> Optional[str]:
         """ Return next line to send (with CR LF added)
-            None for EOF. """
+            Returns None for EOF.
+            max_size is the size limit of the returned data.
+            max_size == 0 means no limit.
+        """
         if self.eof:
             return None
-        line = self.line_buf[self.lines_sent]
-        if not (len(line) and line[-1] == '%'):
-            # Add \r\n to line unless it's the % ebd-of-file-marker.
-            # We don't add it after the % because the Matsuura won't read the \n
-            # then it gets left in the buffers to be read at the beginning of
-            # the next input operation which can cause issues.
-            line += "\r\n"
-        self.lines_sent += 1
+        if self.read_buffer:
+            line = self.read_buffer
+        else:
+            line = self.line_buf[self.lines_sent]
+            self.lines_sent += 1
+            if not (len(line) and line[-1] == '%'):
+                # Add \r\n to line unless it's the % end-of-file-marker.
+                # We don't add it after the % because the Matsuura won't read
+                # the \n then it gets left in the buffers to be read at the
+                # beginning of the next input operation which can cause issues.
+                #
+                # *** MUST *** add CR LF and not just LF because short lines
+                # triggered the RS-232 Overrun Alarm bug.
+                # Changing LF to CR LF fixed it.
+                line += "\r\n"
+        if max_size:
+            # Split into two parts
+            self.read_buffer = line[max_size:]
+            line = line[:max_size]
+        else:
+            self.read_buffer = ""
         return line
 
 
