@@ -131,13 +131,13 @@ import select
 import os
 import sys
 from typing import Optional, List
-
 import serial
 import serial.tools.list_ports
 import time
 import random
 import dotenv
 import json
+from zlib import crc32
 
 DEFAULT_SERIAL_PORT_NAME = "/dev/ttyUSB0"
 DEFAULT_TCP_PORT = 1111
@@ -386,8 +386,7 @@ class SerialSender:
             # even if it doesn't create run errors.
             # You have been warned.
             if line_from_file is None:
-                if DEBUG_SEND:
-                    log(f"SEND: EOF: {self.file_to_send.status}")
+                log(f"EOF: {self.file_to_send.status}")
                 self.sticky_status = self.file_to_send.status
                 self.file_to_send: Optional[FileToSend] = None
                 return
@@ -438,6 +437,7 @@ class FileToSend:
         self.line_buf: List[str] = []   # Lines of file with \r\n on each.
         self.lines_sent = 0             # Index of next line to send
         self.read_buffer = ""           # Chars waiting to be sent
+        self.crc32_value = 0            # CRC32 check of data to be sent
 
         self._read_file()
 
@@ -466,7 +466,8 @@ class FileToSend:
         status = f"Sending {self.name}, Line {self.lines_sent}/{self.lines} " \
                  f"{self.percent_sent}%"
         if self.lines_sent >= self.lines:
-            status = f"Finished sending: {self.name}, {self.lines} lines, 100%"
+            status = f"Finished sending: {self.name}," \
+                    f" {self.lines} lines, 100%, crc32: {self.crc32_value:08X}"
         return status
 
     def _read_file(self) -> None:
@@ -548,6 +549,7 @@ class FileToSend:
         self.line_buf.insert(0, "\r\n")
 
         self.lines_sent = 0
+        self.crc32_value = 0    # Reset -- computed as read()/sent
 
     def read_line(self, max_size=0) -> Optional[str]:
         """ Return next line to send (with CR LF added)
@@ -568,6 +570,7 @@ class FileToSend:
             line = line[:max_size]
         else:
             self.read_buffer = ""
+        self.crc32_value = crc32(line.encode("utf-8"), self.crc32_value)
         return line
 
 

@@ -39,6 +39,7 @@ import time
 import serial_sender
 from serial_sender import log
 from serial_sender import SerialPort
+from zlib import crc32
 
 Serial_port_name = os.environ.get('SERIAL_PORT_NAME', "/dev/ttyUSB0")
 
@@ -69,6 +70,7 @@ def main_loop():
     worse_cnt = 0
     worse_late_data = ""
     worse_late_delay = 0    # Total time to receive late data in seconds.
+    crc32_value = 0
 
     while True:
         tty.check_open()
@@ -97,6 +99,8 @@ def main_loop():
         if len(byte_data) == 0:
             # Timeout without receiving any data
             continue
+
+        crc32_value = crc32(byte_data, crc32_value)
 
         time_since_last_data = time_after_read - time_after_read_last
         time_after_read_last = time_after_read
@@ -135,11 +139,13 @@ def main_loop():
             continue
 
         if '%' in data:
-            # End of g code file.  Reset late data stats
+            # End of G-code file.  Reset late data stats
             worse_delay = 0
             worse_cnt = 0
             worse_late_data = ""
             worse_late_delay = 0  # Total time to receive late data in seconds.
+            log(f"END OF G-code, crc32: {crc32_value:08X}")
+            crc32_value = 0
 
         line_cnt += data.count('\n')
         if line_cnt >= RTS_STOP_LINES:
