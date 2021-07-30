@@ -258,11 +258,23 @@ class SerialSender:
         sock.send(response.encode("utf-8"))
 
     def prep_socket(self):
-        """ called once to prepare the primary tcp listener socket """
-        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        # log(f"port is {self.tcp_port}")
-        self.server_socket.bind(('', self.tcp_port))
-        self.server_socket.listen(1)
+        """ Called once to prepare the primary tcp listener socket.
+            exit(1) on error.
+        """
+        try:
+            self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            # log(f"port is {self.tcp_port}")
+            # self.tcp_port = 1111999 # force port error for testing
+            self.server_socket.bind(('', self.tcp_port))
+            self.server_socket.listen(1)
+        except OSError as err:
+            log(f"Exit: Cannot open TCP port: ({err}")
+            exit(1)
+        except OverflowError as err:
+            # Invalid port number
+            log(f"Error: {err}")
+            log(f"tcp_port: {self.tcp_port!r}")
+            exit(1)
         log("Listening on TCP port %d\n" % self.tcp_port)
 
         self.read_list = [self.server_socket]  # read list is the list of tcp ports
@@ -590,8 +602,11 @@ class SerialPort:
             # if serial connection is not open attempt to open
             try:
                 self.open()
-            except serial.SerialException:
-                log(f"Cannot open: {self.port_name}")
+            except serial.SerialException as err:
+                if err.errno == 35:
+                    log(f"Cannot open: {self.port_name} (already in use)")
+                else:
+                    log(f"Cannot open: {self.port_name} errno:{err.errno}")
                 self.serial_connection: Optional[serial.Serial] = None
                 return False
 
@@ -609,7 +624,9 @@ class SerialPort:
                                                parity=serial.PARITY_NONE,
                                                write_timeout=None,
                                                xonxoff=False,
-                                               rtscts=True)
+                                               rtscts=True,
+                                               exclusive=True,
+                                               )
 
     @property
     def is_open(self) -> bool:
