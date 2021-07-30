@@ -47,6 +47,9 @@ ADD_PERCENT_TO_END_OF_LAST_COMMAND = True
 # TODO exclusive open of tty
 # TODO catch port in use bind error
 
+DEBUG_SEND = False   # log sent data
+DEBUG_FLOW = False   # log CTS changes
+
 
 class SerialSender:
     """ Matsuura SerialSender Daemon
@@ -237,34 +240,33 @@ class SerialSender:
             self.serial_port.close()
             return
 
-        msg = f"serial_chores() start cts: {cts!s:<5}"
+        if DEBUG_FLOW:
+            msg = f"FLOW: cts: {cts!s:<5}"
 
-        if self.file_to_send is not None:
-            msg += f" out_waiting: {self.serial_port.out_waiting:<3} "
-            msg += f" {self.file_to_send.status}"
+            if self.file_to_send is not None:
+                msg += f" out_waiting: {self.serial_port.out_waiting:<3} "
+                msg += f" {self.file_to_send.status}"
 
-        if cts != self.last_cts:
-            self.last_cts = cts
-            log(msg)
-            # msg = None
+            if cts != self.last_cts:
+                self.last_cts = cts
+                log(msg)
 
         if self.file_to_send is None:
             return
 
         # if serial_connection.out_waiting == 0:
         if self.serial_port.out_waiting == 0 and self.serial_port.cts:
-            # if msg is not None:
-            #     log(msg)
             line_from_file = self.file_to_send.read_line(max_size=100)
-            # log(f'    read line_from_file[{line_from_file!r}]\n')
             if line_from_file is None:
-                log('    EOF on file return.\n')
+                if DEBUG_SEND:
+                    log(f"SEND: EOF: {self.file_to_send.status}")
                 self.sticky_status = self.file_to_send.status
                 self.file_to_send: Optional[FileToSend] = None
                 return
 
             line_from_file_as_bytes = line_from_file.encode('utf-8')
-            log(f"SEND: {line_from_file!r} {len(line_from_file_as_bytes)} bytes")
+            if DEBUG_SEND:
+                log(f"SEND: {len(line_from_file_as_bytes):3} {line_from_file!r} ")
             bytes_sent = self.serial_port.write(line_from_file_as_bytes)
             if bytes_sent > 0:
                 # Don't try to send more until these bytes have had time
