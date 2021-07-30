@@ -145,17 +145,13 @@ DEFAULT_UPLOAD_PATH = "/home/pi/matsuura_uploader/uploads"
 
 BAUD = 9600     # Not meant to be changed
 
-ADD_PERCENT_TO_END_OF_LAST_COMMAND = True
-
-# TODO clean up documentation
-# TODO reread all the code to look for something I missed in huge refactor
-# TODO what about the last % (do we need to do special testing?)
-# TODO figure out why the white cable worked when the FTDI did not.
-# TODO exclusive open of tty
-# TODO catch port in use bind error
-
 DEBUG_SEND = False   # log sent data
 DEBUG_FLOW = False   # log CTS changes
+
+ADD_PERCENT_TO_END_OF_LAST_COMMAND = True   # Best to leave True
+
+# TODO reread all the code to look for something I missed in huge refactor
+# TODO figure out why the white cable worked when the FTDI did not.
 
 
 class SerialSender:
