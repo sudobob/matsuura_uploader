@@ -38,13 +38,16 @@ DEFAULT_SERIAL_PORT_NAME = "/dev/ttyUSB0"
 DEFAULT_TCP_PORT = 1111
 DEFAULT_UPLOAD_PATH = "/home/pi/matsuura_uploader/uploads"
 
-ADD_PERCENT_TO_END_OF_LAST_COMMAND = False
+ADD_PERCENT_TO_END_OF_LAST_COMMAND = True
 
 # TODO catch non-gcode files with error -- long lines can create sender block
 # TODO clean up documentation
 # TODO reread all the code to look for something I missed in huge refactor
 # TODO what about the last % (do we need to do special testing?)
 # TODO figure out what he white cable worked when the FTDI did not.
+# TODO exclusive open of tty
+# TODO catch port in use bind error
+# TODO send in small chunks, not lines
 
 
 class SerialSender:
@@ -157,16 +160,17 @@ class SerialSender:
         """ select() returns all the connections and their statuses """
 
         timeout = 1.0  # check status of serial every second
+        now = time.time()
         if self.serial_port.is_open and self.file_to_send is not None:
-            now = time.time()
-            if now > self.time_to_check_again:
-                timeout = now - self.time_to_check_again
+            if self.time_to_check_again > now:
+                # Sleep until it's time to check again
+                timeout = self.time_to_check_again - now
             else:
-                timeout = 0.001
+                timeout = 0.02
         if timeout > 1.0:
             timeout = 1.0
 
-        # log(f"select with timeout of {timeout:.6f} ")
+        # log(f"select with timeout of {timeout:.6f} now:{now:.3f} check_again:{self.time_to_check_again:.2f}")
         readable, writable, errored = \
             select.select(self.read_list, [], [], timeout)
 
@@ -229,7 +233,7 @@ class SerialSender:
 
         try:
             cts = self.serial_port.cts
-        except OSError as err:  # TODO need to check for this over a wider scope
+        except OSError as err:
             log(f"USB Unplugged: {err.strerror}")
             # Someone unplugged the USB cable
             self.serial_port.close()
@@ -238,13 +242,15 @@ class SerialSender:
         msg = f"serial_chores() start cts: {cts!s:<5}"
 
         if self.file_to_send is not None:
-            msg += f" out_waiting: {self.serial_port.out_waiting:<3} " \
-                   f" {self.file_to_send.status}"
+            msg += f" out_waiting: {self.serial_port.out_waiting:<3} "
+            msg += f" {self.file_to_send.status}"
 
         if cts != self.last_cts:
             self.last_cts = cts
             log(msg)
             msg = None
+
+        msg = None
 
         if self.file_to_send is None:
             return
@@ -269,10 +275,10 @@ class SerialSender:
                 # to be sent. (9600 baud is 960 characters per second)
                 self.time_to_check_again = time.time() + (bytes_sent - 1) / 960
 
-            log(f"    chore done cts: {cts!s:<5}"
-                f" out_waiting: {self.serial_port.out_waiting:<3} "
-                f" {self.file_to_send.status}"
-                )
+            # log(f"    chore done cts: {cts!s:<5}"
+            #     f" out_waiting: {self.serial_port.out_waiting:<3} "
+            #     f" {self.file_to_send.status}"
+            #     )
 
 
 class FileToSend:

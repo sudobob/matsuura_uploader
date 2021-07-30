@@ -42,8 +42,8 @@ from serial_sender import SerialPort
 
 Serial_port_name = os.environ.get('SERIAL_PORT_NAME', "/dev/ttyUSB0")
 
-RTS_STOP_LINES = 5      # Tell sender to stop after this many \n received
-RTS_STOP_TIME = .5      # seconds to pause before telling sender to start
+RTS_STOP_LINES = 5     # Tell sender to stop after this many \n received
+RTS_STOP_TIME = 0.5     # seconds to pause before telling sender to start
 
 
 def main():
