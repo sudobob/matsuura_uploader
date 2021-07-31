@@ -141,6 +141,7 @@ def get_first_line(fn):
 
 def get_files_uploaded():
     file_names = os.listdir(upload_path)
+    file_names.sort()
     o = []
     for fns in  file_names:
         fi = {'file_name':fns,'first_line':get_first_line(fns)}
