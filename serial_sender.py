@@ -204,7 +204,7 @@ class SerialSender:
                 if command is None:
                     self.send_err(sock, "Missing 'cmd' label in request")
 
-                elif command == 'start':
+                elif command == "start":
                     file = mesg.get("file")
                     if file is None:
                         self.send_err(sock, "Missing 'file' label in start request.")
@@ -342,6 +342,8 @@ class SerialSender:
             self.send_err(sock, f"open [{filename}] FAIL")
             return
 
+        # Note: "Sending" is the keyword the web server looks for to
+        # set fast updates while sending (case is not important).
         self.send_ok(sock, f"Started sending [{self.file_to_send.name}] ")
 
     def serial_chores(self):
@@ -472,6 +474,8 @@ class FileToSend:
     @property
     def status(self):
         """ e.g. "Sending 1001.nc, Line 89/234 38%" """
+        # Note: "Sending" is the keyword the web server looks for to
+        # set fast updates while sending (case not important).
         status = f"Sending {self.name}, Line {self.lines_sent}/{self.lines} " \
                  f"{self.percent_sent}%"
         if self.lines_sent >= self.lines:

@@ -2,7 +2,7 @@ $(document).ready(() => {
 
   var idle_counter = 0;
   var last_status_message = ''
-  var idle_intrvl_sending_secs = 3;
+  var idle_intrvl_sending_secs = 2;
   var idle_intrvl_idle_secs = 10;
   var idle_intrvl_secs = idle_intrvl_idle_secs;
 
@@ -133,7 +133,7 @@ $(document).ready(() => {
     }
     console.log('periodic_chores() idle_counter:' + idle_counter + ' last_status_message:' + last_status_message);
 
-    if (last_status_message.match(/Sent/i))
+    if (last_status_message.match(/Sending/i))
       idle_intrvl_secs = idle_intrvl_sending_secs;
     else
       idle_intrvl_secs = idle_intrvl_idle_secs;
