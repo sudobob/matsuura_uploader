@@ -148,10 +148,7 @@ BAUD = 9600     # Not meant to be changed
 
 DEBUG_SEND = False   # log sent data
 DEBUG_FLOW = False   # log CTS changes
-
-# TODO reread all the code to look for something I missed in huge refactor
-# TODO figure out why the white cable worked when the FTDI did not.
-# TODO check load_dotenv() use and function
+DEBUG_TO_SYSLOG = False
 
 
 class SerialSender:
@@ -479,7 +476,7 @@ class FileToSend:
         status = f"Sending {self.name}, Line {self.lines_sent}/{self.lines} " \
                  f"{self.percent_sent}%"
         if self.lines_sent >= self.lines:
-            status = f"Finished sending: {self.name}," \
+            status = f"Sent: {self.name}," \
                     f" {self.lines} lines, 100%, crc: {self.crc32_value:08X}"
         return status
 
@@ -699,17 +696,17 @@ class SerialPort:
         return 0
 
 
-def log(s: str):
+def log(message: str):
     """ Write string s to stderr with ms timestamp. """
+    if DEBUG_TO_SYSLOG:
+        syslog.syslog(message)
+        return
+    # Else debug to stderr
     now = time.time()
     m_sec = int(now*1000 % 1000)
-    message = s
-    if message[-1] == '\n':
-        message = message[:-1]
     t = time.localtime(now)
-    # sys.stderr.write(f"{t.tm_hour:02d}:{t.tm_min:02d}:{t.tm_sec:02d}.{m_sec:03d}")
-    # sys.stderr.write(f" {message}\n")
-    syslog.syslog(message)
+    sys.stderr.write(f"{t.tm_hour:02d}:{t.tm_min:02d}:{t.tm_sec:02d}.{m_sec:03d}")
+    sys.stderr.write(f" {message.rstrip()}\n")
 
 
 def list_ports():
