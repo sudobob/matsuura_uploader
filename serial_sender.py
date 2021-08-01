@@ -163,7 +163,7 @@ class SerialSender:
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.read_list = []
 
-        dotenv.load_dotenv()  # get environ vars from .env
+        dotenv.load_dotenv()  # load .env but don't override environment
 
         self.serial_port_name = \
             os.environ.get('SERIAL_PORT_NAME', DEFAULT_SERIAL_PORT_NAME)
@@ -214,7 +214,12 @@ class SerialSender:
         if DEBUG_SOCKET:
             log(f'Message received: {mesg_from_socket!r}\n')
 
-        mesg = json.loads(mesg_from_socket.lower())
+        try:
+            mesg = json.loads(mesg_from_socket.lower())
+        except json.JSONDecodeError:
+            log(f"Invalid json data in request: {mesg_from_socket}")
+            self.send_err(sock, "Invalid json data in request")
+            return
 
         command = mesg.get("cmd")
         if command is None:
