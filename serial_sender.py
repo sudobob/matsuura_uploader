@@ -146,9 +146,14 @@ DEFAULT_UPLOAD_PATH = "/home/pi/matsuura_uploader/uploads"
 
 BAUD = 9600     # Not meant to be changed
 
-DEBUG_SEND = False   # log sent data
-DEBUG_FLOW = False   # log CTS changes
-DEBUG_TO_SYSLOG = False
+LOG_TO_SYSLOG = True        # Else log to stderr
+
+DEBUG_SOCKET = False        # log socket IO
+DEBUG_SEND = False          # log sent data
+DEBUG_FLOW = False          # log CTS changes
+DEBUG_FAKE_CTS = False      # Fake CTS turning on and off for testing
+FAKE_CTS_ON = 10.0          # Seconds
+FAKE_CTS_OFF = 2.0          # Seconds
 
 
 class SerialSender:
@@ -170,15 +175,24 @@ class SerialSender:
 
         self.sticky_status: Optional[str] = None
 
-        self.last_cts = False
+        self.last_cts = None
         self.time_to_check_again = time.time()
 
+        if DEBUG_FAKE_CTS:
+            log(f"Using DEBUG_FAKE_CTS to turn CTS on and off every .5 seconds")
+
     def run(self):
-        """ Main loop, never ends.
-        """
         self.prep_socket()
         # sys.stderr.write(gen_send_random_string() + '\n')
         # list_ports()
+        try:
+            self.main_loop()
+        except KeyboardInterrupt:
+            log(f"KeyboardInterrupt")
+        log("Exit")
+
+    def main_loop(self):
+        """ Main loop, only ends on interrupt. """
         while True:
             self.serial_port.check_open()
 
@@ -193,50 +207,56 @@ class SerialSender:
             sock, mesg_from_socket = self.process_inbound_socket_connections()
 
             if mesg_from_socket != '':
-                # process inbound message
-                log(f'Message received: {mesg_from_socket!r}\n')
-                mesg = json.loads(mesg_from_socket.lower())
-                command = mesg.get("cmd")
+                self.process_message(mesg_from_socket, sock)
 
-                if command is None:
-                    self.send_err(sock, "Missing 'cmd' label in request")
+    def process_message(self, mesg_from_socket, sock):
+        # process inbound message
+        if DEBUG_SOCKET:
+            log(f'Message received: {mesg_from_socket!r}\n')
 
-                elif command == "start":
-                    file = mesg.get("file")
-                    if file is None:
-                        self.send_err(sock, "Missing 'file' label in start request.")
-                    else:
-                        self.sticky_status: Optional[str] = None
-                        self.serial_start_send(sock, file)
+        mesg = json.loads(mesg_from_socket.lower())
 
-                elif command == "stop":
-                    if self.file_to_send is not None:
-                        file_name = self.file_to_send.name
-                        log(f"Closing file: {file_name}")
-                        self.file_to_send: Optional[FileToSend] = None
-                        self.sticky_status = f"Stopped sending: {file_name}"
-                        self.send_ok(sock, self.sticky_status)
-                    else:
-                        self.sticky_status: Optional[str] = None
-                        self.send_err(sock, "Already stopped")
+        command = mesg.get("cmd")
+        if command is None:
+            self.send_err(sock, "Missing 'cmd' label in request")
 
-                elif command == "status":
-                    m = "Idle"
-                    if self.sticky_status:
-                        # This is a saved status that needs to hang around
-                        # to be sure the user sees it on the next web page
-                        # update.  Really useful for "file sent" but also used
-                        # to make other messages sticky.
-                        m = self.sticky_status
+        elif command == "start":
+            file = mesg.get("file")
+            if file is None:
+                self.send_err(sock, "Missing 'file' label in start request.")
+            else:
+                self.sticky_status: Optional[str] = None
+                self.serial_start_send(sock, file)
 
-                    if self.serial_port.is_not_open:
-                        m = f"Cannot open serial port: {self.serial_port.port_name}"
-                    elif self.file_to_send is not None:
-                        m = self.file_to_send.status
+        elif command == "stop":
+            if self.file_to_send is not None:
+                file_name = self.file_to_send.name
+                # log(f"Closing file: {file_name}")
+                self.file_to_send: Optional[FileToSend] = None
+                self.sticky_status = f"Stopped sending: {file_name}"
+                self.send_ok(sock, self.sticky_status)
+                self.serial_port.drain()
+            else:
+                self.sticky_status: Optional[str] = None
+                self.send_err(sock, "Already stopped")
 
-                    self.send_ok(sock, m)
-                else:
-                    self.send_err(sock, "Unknown command")
+        elif command == "status":
+            m = "Idle"
+            if self.sticky_status:
+                # This is a saved status that needs to hang around
+                # to be sure the user sees it on the next web page
+                # update.  Really useful for "file sent" but also used
+                # to make other messages sticky.
+                m = self.sticky_status
+
+            if self.serial_port.is_not_open:
+                m = f"Cannot open serial port: {self.serial_port.port_name}"
+            elif self.file_to_send is not None:
+                m = self.file_to_send.status
+
+            self.send_ok(sock, m)
+        else:
+            self.send_err(sock, "Unknown command")
 
     def send_ok(self, sock, message):
         self.send_response(sock, 0, message)
@@ -247,7 +267,8 @@ class SerialSender:
     @staticmethod
     def send_response(sock, error, message):
         response = json.dumps({"error": error, "message": message})
-        log(f"Response to client: {response!r}")
+        if DEBUG_SOCKET:
+            log(f"Response to client: {response!r}")
         sock.send(response.encode("utf-8"))
 
     def prep_socket(self):
@@ -296,14 +317,15 @@ class SerialSender:
                 # new connections will appear on server_socket
                 client_socket, address = self.server_socket.accept()
                 self.read_list.append(client_socket)    # put it on our read_list
-                log("Connection from: %s:%s\n" % (address[0], address[1]))
+                if DEBUG_SOCKET:
+                    log("Connection from: %s:%s\n" % (address[0], address[1]))
             else:
                 # handle messages from client connections
                 data_buf = b''
                 try:
                     data_buf = s.recv(1024)
                 except OSError:
-                    log('socket reset')
+                    log("Error: socket reset")
 
                 if data_buf:
                     # extract message.
@@ -328,7 +350,7 @@ class SerialSender:
             return
 
         if self.serial_port.is_not_open:
-            self.send_err(sock, f"Can't send, serial port is broken")
+            self.send_err(sock, f"Can't send, serial port problem. Check cable.")
             return
 
         file_with_path = os.path.join(self.upload_path, filename)
@@ -349,13 +371,7 @@ class SerialSender:
             if file is open, send another line
         """
 
-        try:
-            cts = self.serial_port.cts
-        except OSError as err:
-            log(f"USB Unplugged: {err.strerror}")
-            # Someone unplugged the USB cable
-            self.serial_port.close()
-            return
+        cts = self.serial_port.cts
 
         if DEBUG_FLOW:
             msg = f"FLOW: cts: {cts!s:<5}"
@@ -378,7 +394,6 @@ class SerialSender:
             self.file_to_send: Optional[FileToSend] = None
             return
 
-        # if serial_connection.out_waiting == 0:
         if self.serial_port.out_waiting == 0 and self.serial_port.cts:
             line_from_file = self.file_to_send.read_line(max_size=50)
             # NOTE: max_size controls the size of chunks we write
@@ -400,10 +415,24 @@ class SerialSender:
                 return
 
             line_from_file_as_bytes = line_from_file.encode('utf-8')
-            if DEBUG_SEND:
-                log(f"SEND: {len(line_from_file_as_bytes):3} {line_from_file!r}")
+            # log("UNPLUG NOW sleep(2) then will try write")
+            # time.sleep(2)
+            # Note, write() can cause port to close and return None if
+            # the RS-232 USB adaptor is disconnected.
             bytes_sent = self.serial_port.write(line_from_file_as_bytes)
-            if bytes_sent > 0:
+            if DEBUG_SEND:
+                # bytes_sent -= 1   # Debug to force error log below
+                if bytes_sent:
+                    if bytes_sent == len(line_from_file_as_bytes):
+                        log(f"SEND: {len(line_from_file_as_bytes):3} {line_from_file!r}")
+                    else:
+                        # Should never happen unless we have a worse error
+                        # that will be caught elsewhere so I'm not going to
+                        # cope with this.
+                        log(f"SEND ERROR unexpected SHORT WRITE: {bytes_sent}"
+                            f" of {len(line_from_file_as_bytes)}"
+                            f" {line_from_file!r}")
+            if bytes_sent:
                 # Don't try to send more until these bytes have had time
                 # to be sent. (9600 baud is 960 characters per second)
                 # 1 stop bit, 8 data, 1 stop so 10 bits per character sent.
@@ -601,12 +630,8 @@ class SerialPort:
         # log(f"check open {self.is_open}")
         if self.is_open:
             # To verify it's still connected (USB not unplugged), check cts
-            try:
-                _ = self.cts
-            except OSError:
-                log(f"Lost Connection to {self.port_name}")
-                # will try to open below
-                self.serial_connection: Optional[serial.Serial] = None
+            _ = self.cts
+            # This will cause the port to close if there's an error
 
         if self.is_not_open:
             # if serial connection is not open attempt to open
@@ -637,45 +662,93 @@ class SerialPort:
                                                rtscts=True,
                                                exclusive=True)
 
+    def drain(self):
+        """ Drain output buffers by closing and reopening. """
+        log("Close and re-open serial port to drain output buffers.")
+        self.close()
+        self.check_open()
+
     @property
     def is_open(self) -> bool:
+        """ self.serial_connection is not None """
         return not self.is_not_open
 
     @property
     def is_not_open(self) -> bool:
+        """ self.serial_connection is None """
         return self.serial_connection is None
 
     @property
     def cts(self) -> bool:
-        """ CTS wire is True or False. """
+        """ Clear to Send wire is True or False.
+
+            Needs to be True to indicate ok-to-send using
+            standard RTS/CTS flow control.
+            Returns False on error or if not open.
+        """
         if self.is_open:
-            return self.serial_connection.cts
+            try:
+                cts = self.serial_connection.cts
+                if DEBUG_FAKE_CTS:
+                    cts = self.fake_cts()
+                return cts
+            except OSError as err:
+                self.log_and_close(err)
         return False
+
+    @staticmethod
+    def fake_cts():
+        return (time.time() % (FAKE_CTS_ON + FAKE_CTS_OFF)) > FAKE_CTS_OFF
+
+    def log_and_close(self, err):
+        """ Someone unplugged the USB cable """
+        log(f"Serial error (USB Unplugged): {err.args}")
+        self.close()
 
     @property
     def rts(self):
+        """ RS-232 Request to Send value.
+
+            This is an output value we set, and will not throw
+            an exception if the serial port closes without warning
+            because it just returns the current variable value and does
+            not query the port.
+        """
         if self.is_open:
             return self.serial_connection.rts
         return False
 
     @rts.setter
     def rts(self, value: bool):
+        """ Set Request to Send -- Set True to say you want data sent."""
         if self.is_open:
-            self.serial_connection.rts = value
+            try:
+                self.serial_connection.rts = value
+            except OSError as err:
+                self.log_and_close(err)
 
     def read_all(self):
         """ Read bytes from serial port. Returns what is available.
 
-            Might return None at times, I'm not sure...
+            Will return "" after log_and_close() on error.
+            Might return None on other errors?
         """
         if self.is_open:
-            return self.serial_connection.read_all()
+            try:
+                return self.serial_connection.read_all()
+            except OSError as err:
+                self.log_and_close(err)
         return ""
 
     def write(self, byte_buf):
-        """ Write bytes to serial port. Will block if you write too many. """
+        """ Write bytes to serial port. Will block if you write too many.
+            On error, Returns None after log_and_close()
+        """
         if self.is_open:
-            return self.serial_connection.write(byte_buf)
+            try:
+                return self.serial_connection.write(byte_buf)
+            except OSError as err:
+                self.log_and_close(err)
         return None
 
     def close(self):
@@ -686,20 +759,26 @@ class SerialPort:
     @property
     def out_waiting(self) -> int:
         """ Number of chars buffered in local output buffer.
+
+            Will return 0, after log_and_close() on error.
+
             There are other buffers for USB ports that do not show up
             in this number.  Testing on a MacBook, the write to the
             port would hang when this number plus the characters to write
             exceed about 512.
         """
         if self.is_open:
-            return self.serial_connection.out_waiting
+            try:
+                return self.serial_connection.out_waiting
+            except OSError as err:
+                self.log_and_close(err)
         return 0
 
 
 def log(message: str):
     """ Write string s to stderr with ms timestamp. """
-    if DEBUG_TO_SYSLOG:
-        syslog.syslog(message)
+    if LOG_TO_SYSLOG:
+        syslog.syslog(syslog.LOG_NOTICE, message)
         return
     # Else debug to stderr
     now = time.time()
