@@ -44,10 +44,10 @@ $(document).ready(() => {
         if (r['error'] == 1) {
           $('#message_div').html(mesg('fa-bomb',r['message'],'danger'));
         } else {
-          $('#message_div').html(mesg('fa-rocket',r['message'],'success'));
+          $('#message_div').html(mesg('fa-rocket',r['message']+'no error CURT','success'));
           idle_intrvl_secs = idle_intrvl_sending_secs;
-          idle_counter = 0;
         }
+        last_status_message = r['message']
       }
     });
   });
@@ -67,6 +67,7 @@ $(document).ready(() => {
         } else {
           $('#message_div').html(mesg('fa-rocket',r['message'],'success'));
         }
+        last_status_message = r['message']
       }
     });
   });
