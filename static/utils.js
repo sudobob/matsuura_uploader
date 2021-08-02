@@ -12,7 +12,7 @@ $(document).ready(() => {
 
   function mesg(i,m,c) {
     // primary, secondary, success, danger, warning, info, light, dark
-    o  = '';
+    let o = '';
     o += '<div class="row">';
     o += '<div class="col-md-12">';
     o += '  <div class="alert alert-' + c + '" role="alert">';
@@ -44,7 +44,7 @@ $(document).ready(() => {
         if (r['error'] == 1) {
           $('#message_div').html(mesg('fa-bomb',r['message'],'danger'));
         } else {
-          $('#message_div').html(mesg('fa-rocket',r['message']+'no error CURT','success'));
+          $('#message_div').html(mesg('fa-rocket',r['message'],'success'));
           idle_intrvl_secs = idle_intrvl_sending_secs;
         }
         last_status_message = r['message']
