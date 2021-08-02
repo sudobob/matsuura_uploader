@@ -222,7 +222,7 @@ class SerialSender:
             self.send_err(sock, "Invalid json data in request")
             return
 
-        command = mesg.get("cmd").lower()
+        command = mesg.get("cmd")
         if command is None:
             self.send_err(sock, "Missing 'cmd' label in request")
 
