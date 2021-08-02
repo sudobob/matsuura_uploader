@@ -38,17 +38,16 @@ $(document).ready(() => {
       data: 'cmd=start&file=' + $('#send_start_btn').val(),
       beforeSend: () => { 
         show_loader();
-
-        idle_counter = idle_intrvl_secs;
+        idle_counter = 0;
       },
       success: (r) => { 
         if (r['error'] == 1) {
           $('#message_div').html(mesg('fa-bomb',r['message'],'danger'));
         } else {
           $('#message_div').html(mesg('fa-rocket',r['message'],'success'));
-          idle_counter = idle_intrvl_secs = idle_intrvl_sending_secs;
+          idle_intrvl_secs = idle_intrvl_sending_secs;
+          idle_counter = 0;
         }
-
       }
     });
   });
@@ -60,7 +59,7 @@ $(document).ready(() => {
       data: 'cmd=stop',
       beforeSend: () => { 
         show_loader();
-        idle_counter = idle_intrvl_secs;
+        idle_counter = 0;
       },
       success: (r) => { 
         if (r['error'] == 1) {
@@ -71,31 +70,6 @@ $(document).ready(() => {
       }
     });
   });
-
-
-  function get_status() {
-
-    //$('#message_div').html(mesg('fa-binoculars ','under construction','warning'));
-    $.ajax( {
-      type: 'PUT',
-      url: '/api',
-      data: 'cmd=status',
-      beforeSend: () => { 
-        show_loader();
-        idle_counter = idle_intrvl_secs;
-      },
-      success: (r) => { 
-        if (r['error'] == 1) {
-          $('#message_div').html(mesg('fa-bomb',r['message'],'danger'));
-        } else {
-          $('#message_div').html(mesg('fa-binoculars',r['message'],'success'));
-        }
-        last_status_message = r['message']
-      }
-    });
-
-
-  }
 
   $(document).on('click','#send_status_btn', () => {
     get_status();
@@ -109,7 +83,7 @@ $(document).ready(() => {
       data: 'cmd=status',
       beforeSend: () => { 
         show_loader();
-        idle_counter = idle_intrvl_secs;
+        idle_counter = 0;
       },
       success: (r) => { 
         if (r['error'] == 1) {
@@ -120,15 +94,13 @@ $(document).ready(() => {
         last_status_message = r['message']
       }
     });
-
   }
 
   function periodic_chores() {
     // tend to periodic housekeeping chores
-    if (idle_counter) 
-      idle_counter--;
-    if (idle_counter == 0) {
-      idle_counter = idle_intrvl_secs; 
+    idle_counter++;
+    if (idle_counter >= idle_intrvl_secs) {
+      idle_counter = 0;
       get_status();
     }
     console.log('periodic_chores() idle_counter:' + idle_counter + ' last_status_message:' + last_status_message);
@@ -137,7 +109,6 @@ $(document).ready(() => {
       idle_intrvl_secs = idle_intrvl_sending_secs;
     else
       idle_intrvl_secs = idle_intrvl_idle_secs;
-    
   }
 
   setInterval(periodic_chores,  1000);
