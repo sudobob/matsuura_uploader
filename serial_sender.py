@@ -160,7 +160,7 @@ class SerialSender:
     """ Matsuura SerialSender Daemon
     """
     def __init__(self):
-        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server_socket = None
         self.read_list = []
 
         dotenv.load_dotenv()  # load .env but don't override environment
@@ -179,7 +179,8 @@ class SerialSender:
         self.time_to_check_again = time.time()
 
         if DEBUG_FAKE_CTS:
-            log(f"Using DEBUG_FAKE_CTS to turn CTS on and off every .5 seconds")
+            log(f"Using DEBUG_FAKE_CTS to turn CTS on for {FAKE_CTS_ON:.3} sec"
+                f" and off for {FAKE_CTS_OFF:.3} sec")
 
     def run(self):
         self.prep_socket()
@@ -281,7 +282,10 @@ class SerialSender:
             exit(1) on error.
         """
         try:
-            self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.server_socket = socket.socket(socket.AF_INET,
+                                               socket.SOCK_STREAM)
+            self.server_socket.setsockopt(socket.SOL_SOCKET,
+                                          socket.SO_REUSEADDR, 1)
             # log(f"port is {self.tcp_port}")
             # self.tcp_port = 1111999 # force port error for testing
             self.server_socket.bind(('', self.tcp_port))
@@ -294,7 +298,7 @@ class SerialSender:
             log(f"Error: {err}")
             log(f"tcp_port: {self.tcp_port!r}")
             exit(1)
-        log("Listening on TCP port %d\n" % self.tcp_port)
+        log(f"Listening on TCP port {self.tcp_port}")
 
         self.read_list = [self.server_socket]  # read list is the list of tcp ports
 
