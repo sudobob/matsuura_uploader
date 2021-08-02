@@ -216,13 +216,13 @@ class SerialSender:
             log(f'Message received: {mesg_from_socket!r}\n')
 
         try:
-            mesg = json.loads(mesg_from_socket.lower())
+            mesg = json.loads(mesg_from_socket)
         except json.JSONDecodeError:
             log(f"Invalid json data in request: {mesg_from_socket}")
             self.send_err(sock, "Invalid json data in request")
             return
 
-        command = mesg.get("cmd")
+        command = mesg.get("cmd").lower()
         if command is None:
             self.send_err(sock, "Missing 'cmd' label in request")
 
@@ -372,7 +372,7 @@ class SerialSender:
 
         # Note: "Sending" is the keyword the web server looks for to
         # set fast updates while sending (case is not important).
-        self.send_ok(sock, f"Started sending [{self.file_to_send.name}] ")
+        self.send_ok(sock, f"Started sending: {self.file_to_send.name}")
 
     def serial_chores(self):
         """
