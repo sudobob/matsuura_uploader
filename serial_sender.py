@@ -239,7 +239,7 @@ class SerialSender:
                 file_name = self.file_to_send.name
                 # log(f"Closing file: {file_name}")
                 self.file_to_send: Optional[FileToSend] = None
-                self.sticky_status = f"Stopped sending: {file_name}"
+                self.sticky_status = f"Stopped: {file_name}"
                 self.send_ok(sock, self.sticky_status)
                 self.serial_port.drain()
             else:
