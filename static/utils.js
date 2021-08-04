@@ -2,7 +2,7 @@ $(document).ready(() => {
 
   var idle_counter = 0;
   var last_status_message = ''
-  var idle_intrvl_sending_secs = 1;
+  var idle_intrvl_sending_secs = 2;
   var idle_intrvl_idle_secs = 5;
   var idle_intrvl_secs = idle_intrvl_idle_secs;
 

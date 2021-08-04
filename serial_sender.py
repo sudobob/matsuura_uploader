@@ -367,12 +367,12 @@ class SerialSender:
             self.file_to_send = FileToSend(file_with_path)
         except OSError:
             self.file_to_send: Optional[serial.Serial] = None
-            self.send_err(sock, f"open [{filename}] FAIL")
+            self.send_err(sock, f"Cannot open {filename!r}")
             return
 
         # Note: "Sending" is the keyword the web server looks for to
         # set fast updates while sending (case is not important).
-        self.send_ok(sock, f"Started sending: {self.file_to_send.name}")
+        self.send_ok(sock, self.file_to_send.status)
 
     def serial_chores(self):
         """
