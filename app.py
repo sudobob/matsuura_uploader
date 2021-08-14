@@ -126,11 +126,22 @@ def upload_file():
     return render_template("index.html")
 
 def get_first_line(fn):
-  f = open(os.path.join(upload_path,fn),'r')
-  return f.readline().rstrip()
+    f = open(os.path.join(upload_path,fn),'r')
+    # Skip blank lines and skip '%' line
+    while True:
+        line = f.readline()
+        if line == '':    # EOF
+            break
+        line = line.rstrip()
+        if line == '%' or line == '':
+            continue
+        break
+
+    return line
 
 def get_files_uploaded():
     file_names = os.listdir(upload_path)
+    file_names.sort()
     o = []
     for fns in  file_names:
         fi = {'file_name':fns,'first_line':get_first_line(fns)}

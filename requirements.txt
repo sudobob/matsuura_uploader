@@ -5,4 +5,4 @@ requests==2.21.0
 Flask_Bootstrap4==4.0.2
 python-dotenv==0.10.3
 flask_bootstrap==3.3.7.1
-pyserial==3.4
+pyserial==3.5
