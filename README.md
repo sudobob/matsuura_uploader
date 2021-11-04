@@ -78,7 +78,7 @@ start uploader in foreground for debugging  `dbg_start_sender`
 # Docker
 A simple dockerfile has been added for testing purposes.  This docker file is based on a Raspbian image built around Python 3.5.
 
-To build the docker file, execute the following from the root of the repository directory:
+To build the docker image, execute the following from the root of the repository directory:
 
 ```
 docker build -t matsuura_uploader .
