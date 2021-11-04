@@ -112,13 +112,14 @@ def load_user(userid):
 def upload_file():
     if request.method == "POST":
         if request.files:
-            image = request.files["file"]
-            if (image.filename == ''):
-                flash('File NOT uploaded','error')
-                return render_template("index.html")
-            else:
-                image.save(os.path.join(upload_path,image.filename))
-                flash('file ' + image.filename + ' uploaded','success')
+            images = request.files.getlist("file")
+            for image in images:
+                if (image.filename == ''):
+                    flash('File NOT uploaded','error')
+                    return render_template("index.html")
+                else:
+                    image.save(os.path.join(upload_path,image.filename))
+                    flash('file ' + image.filename + ' uploaded','success')
 
     global g
     g.files_uploaded = get_files_uploaded()
