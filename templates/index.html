@@ -9,6 +9,8 @@ bootstrap friendly manner #}
   {# Call in our scripts *after* bootstrap calls in jquery 
   #}
   <link href="{{ url_for('static', filename='utils.css') }}" rel="stylesheet">
+  {{ dropzone.load_css() }}
+  {{ dropzone.style('position: fixed; top: 0; left: 0; z-index: -1; width: 100%; height: 100%; visibility: visible; opacity:0;')}}
 {% endblock %} 
 
 {# 
@@ -18,10 +20,12 @@ intact.
 #}
 {% block content %}
 
-
 <div class="container">
-  {% include "navbar.html"  %}
+  {{ dropzone.load_js() }}
+  {{ dropzone.create(action='dzupload') }}
+  {{ dropzone.config(custom_options='clickable: false') }}
 
+  {% include "navbar.html"  %}
 
   {%- with messages = get_flashed_messages(with_categories=True) %}
   {%- if messages %}
@@ -60,8 +64,6 @@ intact.
 
 	</div>
 
-
-
 	{# 
 	Inside the ``content`` is where you should place most of your own stuff.
 	This will keep scripts at the page end and a navbar you add on later
@@ -71,7 +73,7 @@ intact.
 {% if current_user.id != "kiosk" %}
   
 	<div class="border-top">
-		<H4>UPLOAD NEW FILE</H4>
+		<H4>UPLOAD NEW FILE(S)</H4>
 		<div style="margin-left:1%;">
 			<form action="/upload" method="POST" enctype="multipart/form-data">
 				<div class="form-group">
@@ -85,8 +87,6 @@ intact.
 	</div>
 
 {% endif %}
-
-
 
 </div>
 {%- endblock %}
