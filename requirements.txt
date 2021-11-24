@@ -1,4 +1,4 @@
-Flask==0.12.1
+Flask==1.0
 Flask_RESTful==0.3.7
 Flask_Login==0.4.1
 requests==2.21.0
