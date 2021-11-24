@@ -14,6 +14,7 @@ from flask import Flask, Response, redirect, url_for, render_template, flash, g,
 from flask_login import LoginManager, UserMixin, login_user, logout_user, current_user, login_required
 from flask_bootstrap import Bootstrap
 from flask_restful import Resource, Api
+from flask_dropzone import Dropzone
 
 from flask_restful import Resource as FlaskRestResource
 from flask_restful import reqparse as FlaskRestReqparse
@@ -33,7 +34,16 @@ import requests # for slack
 flask_app = Flask(__name__)
 Bootstrap(flask_app) # bootstrap-a-ma-tize flask
 flask_rest_api = FlaskRestAPI(flask_app) # rest-a-ma-tize flask
-flask_app.config['BOOTSTRAP_SERVE_LOCAL'] = True # tell bootstrap NOT to fetch from CDNs
+#flask_app.config['BOOTSTRAP_SERVE_LOCAL'] = True # tell bootstrap NOT to fetch from CDNs
+
+flask_app.config.update(
+    BOOTSTRAP_SERVE_LOCAL=True,
+    DROPZONE_MAX_FILES=30,
+    DROPZONE_REDIRECT_VIEW='completed',
+    DROPZONE_UPLOAD_MULTIPLE=True
+)
+
+dropzopne = Dropzone(flask_app)
 
 dotenv.load_dotenv() # get envars from .env
 flask_app.secret_key = os.environ['KEY']
@@ -108,17 +118,40 @@ def page_not_found(e):
 def load_user(userid):
     return User(userid)
 
+@flask_app.route('/completed')
+def completed():
+    global g
+    g.files_uploaded = get_files_uploaded()
+    g.kiosk_user_name = os.environ['KIOSK_USER_NAME']
+    return render_template('index.html')
+
+@flask_app.route("/dzupload", methods=['GET', 'POST'])
+def dzupload():
+    if request.method == "POST":
+        if request.files:
+            for key, image in request.files.items():
+                if key.startswith('file'):
+                    if (image.filename == ''):
+                        flash('File NOT uploaded','error')
+                        return render_template("index.html")
+                    else:
+                        image.save(os.path.join(upload_path,image.filename))
+                        flash('file ' + image.filename + ' uploaded','success')
+
+    return render_template("index.html")
+
 @flask_app.route("/upload", methods=["GET", "POST"])
 def upload_file():
     if request.method == "POST":
         if request.files:
-            image = request.files["file"]
-            if (image.filename == ''):
-                flash('File NOT uploaded','error')
-                return render_template("index.html")
-            else:
-                image.save(os.path.join(upload_path,image.filename))
-                flash('file ' + image.filename + ' uploaded','success')
+            images = request.files.getlist("file")
+            for image in images:
+                if (image.filename == ''):
+                    flash('File NOT uploaded','error')
+                    return render_template("index.html")
+                else:
+                    image.save(os.path.join(upload_path,image.filename))
+                    flash('file ' + image.filename + ' uploaded','success')
 
     global g
     g.files_uploaded = get_files_uploaded()

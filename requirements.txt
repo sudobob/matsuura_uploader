@@ -6,3 +6,4 @@ Flask_Bootstrap4==4.0.2
 python-dotenv==0.10.3
 flask_bootstrap==3.3.7.1
 pyserial==3.5
+Flask-Dropzone==1.6.0

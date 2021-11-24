@@ -51,10 +51,6 @@ ln -s /home/pi/matsuura_uploader/autostart /home/pi/.config/lxsession/LXDE/
 - At this point you should be able to browse to http://YourRaspisIPaddr/ and upload and send files
 - If all is well then reboot your pi and the processes should start at boot time via systemd, the browser should come up on the local touch screen
 
-
-
-
-
 # Development Info
 This app is written using the **python flask** framework for web applications. Main code is in the file `app.py` It relies on a separate process `serial_sender.py` to send the data to the serial ports. The Flask web app services html, css, and js to render the page. When the user commands an action to send a file or get status, their flask web server instance makes a tcp socket connection to the serial sender on port 1111 and issues a one line command. The seial sender returns a 1 line json-encoded response which is sent directly back to the client's web browser
 
@@ -78,6 +74,33 @@ start system instace of uploader  `sysctl_start_sender`
 start web app in foreground for debugging  `dbg_start_web_app`
 
 start uploader in foreground for debugging  `dbg_start_sender`
+
+# Docker
+A simple dockerfile has been added for testing purposes.  This docker file is based on a Raspbian image built around Python 3.5.
+
+To build the docker image, execute the following from the root of the repository directory:
+
+```
+docker build -t matsuura_uploader .
+```
+
+Once the Docker image has been created, you can create a docker container with the following command (replace '<container name>' with a custom name of your choice):
+
+```
+docker create -p 8080:80 -p 1111:1111 --name <container name> matsuura_uploader 
+```
+
+Finally, the docker container can be used to test the system by intiating an interactive shell and executing the commands discussed elsewhere in this README file.  Namely:
+
+```
+docker exec -it <container name> /bin/bash
+source .env
+dbg_start_web_app
+```
+
+You should then be able to navigate to the url `http://localhost:8080` to see the web interface.
+
+*Note: This is currently only working for debugging the web front end and the serial sender will not execute correctly.  This is due to Python version mis-matches which will be cleaned up shortly.
 
 
 
