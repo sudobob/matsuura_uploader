@@ -2,7 +2,7 @@
  Description = matsuura web app
 [Service]
  WorkingDirectory = /home/pi/matsuura_uploader
- ExecStart = /usr/local/bin/gunicorn --workers 4 --bind 0.0.0.0:80 app:flask_app
+ ExecStart =  sudo /usr/bin/gunicorn3 --workers 4 --bind 0.0.0.0:80 app:flask_app
  #ExecStart = /usr/bin/python3 app.py
  Type = simple
 [Install]
