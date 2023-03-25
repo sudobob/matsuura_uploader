@@ -21,12 +21,12 @@ This application runs on a dedicated raspberry pi with a touch screen.
 - if this is a new pi do a `sudo apt-get upgrade`  and if this is not a brand new distro then  a `sudo apt-get dist-upgrade`
 -  install this repo into `/home/pi/matsuura_uploader` and `cd matsuura_uploader`
 - If this was a -lite distro like raspbian buster lite  you'll need to do a 
-`sudo apt-get install lightdm xserver-xorg lxde chromium-browser`
+`sudo apt-get install lightdm xserver-xorg lxde chromium-browser gunicorn3`
 You should use doa a `sudo raspi-config` and select __Boot Options -> Desktop/CLI -> Desktop Autologin__ Then reboot
 - install python package installer pip3
  `sudo apt-get install python3-pip`
 - install python packages with 
-`sudo -H pip3 -r requirements.txt`
+`sudo -H pip3 install -r requirements.txt`
  *Note since this is a dedicated raspi I don't see the need to use virtualenv*
 - install boot-time invocations of web server and serial uploader daemons 
 
@@ -38,14 +38,21 @@ sudo systemctl enable matsuura_uploader
 sudo systemctl enable serial_sender
 ```
      
-- configure the a browser instance to come up on the local touch screen in kiosk mode at boot time. if `
-```
+- configure the a browser instance to come up on the local touch screen in kiosk mode at boot time. 
+- LXDE will only start an application once the Raspian UI is up and running, so it avoids race conditions
+- If a file already exists, rename it as below. If it does not exist, make the directories
 mv /home/pi/.config/lxsession/LXDE/autostart /home/pi/.config/lxsession/LXDE/autostart-
 
-ln -s /home/pi/matsuura_uploader/autostart /home/pi/.config/lxsession/LXDE/
+- Create directory if needed, and create link Lto the supplied autostart
+ln -s /home/pi/matsuura_uploader/autostart /home/pi/.config/lxsession/LXDE-pi/
 ```
+
+mkdir /home/pi/matsuura_uploader/uploads
+
 - do a `mv .env-example .env` Edit .env and set the USERNAME and PASSWORD values
-- do a `source .env` to pick up the handy development aliases
+mv .env-example .env; vi .env
+source .env
+
 - You should start the flask application in the foreground initially to see if it is starting up ok with `dbg_start_web_app`
 - Same for the serial sender with `dbg_start_sender`
 - At this point you should be able to browse to http://YourRaspisIPaddr/ and upload and send files
